@@ -1,0 +1,2522 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>Cofres</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+/* ================================================================
+   DESIGN TOKENS
+   ================================================================ */
+:root {
+  /* Palette */
+  --cream:          #F6EFE2;
+  --cream-2:        #EFE5D2;
+  --ink:            #2A2420;
+  --vault:          #1F3A2E;
+  --vault-2:        #2C4F3D;
+  --vault-light:    #3E6650;
+  --brass:          #B8862B;
+  --brass-light:    #D9A949;
+  --terracotta:     #A8533F;
+  --terracotta-light:#C97259;
+
+  /* Semantic */
+  --line:           rgba(42,36,32,0.12);
+  --text-muted:     rgba(42,36,32,0.5);
+  --text-faint:     rgba(42,36,32,0.35);
+
+  /* Shadows */
+  --shadow-sm:      0 1px 2px rgba(42,36,32,0.06), 0 4px 12px rgba(42,36,32,0.07);
+  --shadow-md:      0 1px 2px rgba(42,36,32,0.06), 0 8px 24px rgba(42,36,32,0.09);
+
+  /* Radii — standardised scale */
+  --r-sm:   8px;
+  --r-md:   12px;
+  --r-lg:   16px;
+  --r-xl:   20px;
+  --r-full: 100px;
+
+  /* Type scale */
+  --text-xs:   11px;
+  --text-sm:   12px;
+  --text-base: 14px;
+  --text-md:   15px;
+  --text-lg:   18px;
+  --text-xl:   21px;
+  --text-2xl:  28px;
+}
+
+/* ================================================================
+   RESET & BASE
+   ================================================================ */
+*, *::before, *::after { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; padding: 0; }
+
+body {
+  background: var(--cream);
+  background-image:
+    radial-gradient(circle at 100% 0%, rgba(184,134,43,0.07), transparent 45%),
+    radial-gradient(circle at 0% 100%, rgba(31,58,46,0.06), transparent 40%);
+  color: var(--ink);
+  font-family: 'Inter', sans-serif;
+  font-size: var(--text-base);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.app {
+  max-width: 480px;
+  margin: 0 auto;
+  min-height: 100vh;
+  position: relative;
+  padding: 0 18px 110px;
+}
+
+/* ================================================================
+   TOPBAR & BRAND
+   ================================================================ */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 22px 2px 14px;
+}
+
+.brand { display: flex; align-items: center; gap: 10px; }
+
+.brand-mark {
+  width: 34px; height: 34px;
+  border-radius: 9px;
+  background: linear-gradient(155deg, var(--vault-light), var(--vault));
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08), var(--shadow-sm);
+}
+.brand-mark svg { width: 18px; height: 18px; }
+
+.brand-name {
+  font-family: 'Fraunces', serif;
+  font-weight: 600;
+  font-size: var(--text-xl);
+  letter-spacing: -0.01em;
+  color: var(--vault);
+}
+
+.screen-title {
+  font-family: 'Fraunces', serif;
+  font-weight: 600;
+  font-size: var(--text-xl);
+  color: var(--vault);
+}
+
+.sync-pill {
+  display: flex; align-items: center; gap: 6px;
+  font-size: var(--text-xs); font-weight: 600; color: var(--vault-2);
+  background: rgba(31,58,46,0.08);
+  padding: 6px 10px 6px 8px;
+  border-radius: var(--r-full);
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s ease;
+}
+.sync-pill:active { background: rgba(31,58,46,0.16); }
+.sync-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--vault-light);
+}
+.sync-dot.off { background: var(--terracotta); }
+
+/* ================================================================
+   SUMMARY CARDS (totals)
+   ================================================================ */
+.totals {
+  display: grid;
+  grid-template-columns: repeat(2,1fr);
+  gap: 10px;
+  margin: 6px 0 12px;
+}
+
+.total-card {
+  background: var(--vault);
+  border-radius: var(--r-lg);
+  padding: 16px;
+  color: var(--cream);
+  position: relative;
+  overflow: hidden;
+  box-shadow: var(--shadow-md);
+}
+.total-card::after {
+  content: ''; position: absolute;
+  right: -30px; top: -30px;
+  width: 90px; height: 90px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.05);
+}
+.total-card.debt { background: var(--terracotta); }
+
+.total-label {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.75;
+  margin-bottom: 6px;
+}
+.total-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  font-size: var(--text-xl);
+  letter-spacing: -0.02em;
+}
+.total-value.small { font-size: var(--text-lg); }
+
+/* ================================================================
+   SECTION HEADINGS
+   ================================================================ */
+.section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin: 4px 2px 12px;
+}
+.section-head.centered { align-items: center; }
+
+.section-title {
+  font-family: 'Fraunces', serif;
+  font-weight: 600;
+  font-size: var(--text-lg);
+  color: var(--ink);
+}
+.section-sub {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.vault-count {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  margin-bottom: 18px;
+}
+
+/* ================================================================
+   VAULT CARDS
+   ================================================================ */
+.vaults { display: flex; flex-direction: column; gap: 12px; margin-bottom: 26px; }
+
+.vault-card {
+  background: #fff;
+  border-radius: var(--r-xl);
+  border: 1px solid var(--line);
+  padding: 14px 14px 14px 12px;
+  display: flex; align-items: center; gap: 14px;
+  box-shadow: var(--shadow-sm);
+  position: relative;
+  cursor: pointer;
+  transition: box-shadow 0.15s ease, transform 0.1s ease;
+}
+.vault-card:active { transform: scale(0.985); box-shadow: var(--shadow-sm); }
+
+.vault-seal {
+  width: 52px; height: 52px; min-width: 52px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px;
+  background: radial-gradient(circle at 32% 28%, var(--brass-light), var(--brass) 70%);
+  box-shadow:
+    inset 0 -3px 6px rgba(0,0,0,0.18),
+    inset 0 2px 3px rgba(255,255,255,0.45),
+    0 2px 4px rgba(0,0,0,0.12);
+  color: #3a2a08;
+}
+
+.vault-body { flex: 1; min-width: 0; }
+.vault-name { font-weight: 700; font-size: var(--text-md); margin-bottom: 2px; }
+.vault-meta {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  display: flex; gap: 8px; align-items: center;
+}
+.vault-meta .loan-flag {
+  color: var(--terracotta);
+  font-weight: 600;
+  display: flex; align-items: center; gap: 3px;
+}
+
+.vault-right { text-align: right; }
+.vault-balance {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  font-size: var(--text-md);
+  color: var(--vault);
+  white-space: nowrap;
+}
+.vault-balance.negative { color: var(--terracotta); }
+.chevron { color: var(--text-faint); margin-left: 4px; }
+
+/* Goal progress inside vault card */
+.goal-bar-bg {
+  height: 4px;
+  margin-top: 6px;
+  width: 90%;
+  background: rgba(42,36,32,0.06);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.goal-bar-fill {
+  height: 100%;
+  background: var(--vault-light);
+  border-radius: 4px;
+}
+.goal-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 2px;
+  font-weight: 600;
+}
+
+/* ================================================================
+   ADD / DASHED BUTTONS (shared pattern)
+   ================================================================ */
+.add-dashed-btn {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  border: 1.5px dashed rgba(31,58,46,0.3);
+  border-radius: var(--r-xl);
+  padding: 14px;
+  color: var(--vault-2);
+  font-weight: 600;
+  font-size: var(--text-base);
+  background: rgba(31,58,46,0.03);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.add-dashed-btn:active { background: rgba(31,58,46,0.07); }
+
+/* ================================================================
+   ACTIVITY LIST
+   ================================================================ */
+.activity { display: flex; flex-direction: column; gap: 2px; }
+
+.activity-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 4px;
+  border-bottom: 1px solid var(--line);
+}
+.activity-item:last-child { border-bottom: none; }
+
+.act-icon {
+  width: 36px; height: 36px; min-width: 36px;
+  border-radius: var(--r-sm);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px;
+}
+.act-icon.in  { background: rgba(62,102,80,0.14);  color: var(--vault-2); }
+.act-icon.out { background: rgba(168,83,63,0.13);  color: var(--terracotta); }
+.act-icon.pay { background: rgba(184,134,43,0.16); color: var(--brass); }
+
+.act-body { flex: 1; min-width: 0; }
+.act-title { font-size: var(--text-sm); font-weight: 600; }
+.act-sub   { font-size: var(--text-xs); color: var(--text-muted); margin-top: 1px; }
+
+.act-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  font-size: var(--text-base);
+  white-space: nowrap;
+}
+.act-value.pos { color: var(--vault-2); }
+.act-value.neg { color: var(--terracotta); }
+
+.empty-note {
+  text-align: center;
+  padding: 28px 10px;
+  color: var(--text-faint);
+  font-size: var(--text-sm);
+}
+
+/* ================================================================
+   BOTTOM NAVIGATION
+   ================================================================ */
+.tabbar {
+  position: fixed; left: 0; right: 0; bottom: 0;
+  display: flex; justify-content: center;
+  padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
+  background: linear-gradient(to top, var(--cream) 70%, rgba(246,239,226,0));
+  z-index: 40;
+}
+.tabbar-inner {
+  max-width: 480px; width: 100%;
+  background: rgba(255,255,255,0.9);
+  backdrop-filter: blur(14px);
+  border: 1px solid var(--line);
+  border-radius: var(--r-xl);
+  display: flex; justify-content: space-around;
+  padding: 7px 8px;
+  box-shadow: var(--shadow-md);
+}
+.tab {
+  flex: 1;
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  padding: 7px 4px;
+  border-radius: 14px;
+  color: rgba(42,36,32,0.4);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.tab.active { color: var(--vault); background: rgba(31,58,46,0.07); }
+.tab svg { width: 20px; height: 20px; }
+
+/* ================================================================
+   FAB
+   ================================================================ */
+.fab {
+  position: fixed;
+  right: calc(50% - 240px + 18px);
+  bottom: 86px;
+  width: 56px; height: 56px;
+  border-radius: 50%;
+  background: linear-gradient(155deg, var(--brass-light), var(--brass));
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 4px 14px rgba(184,134,43,0.4), inset 0 1px 2px rgba(255,255,255,0.5);
+  color: #fff;
+  z-index: 30;
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.fab:active { transform: scale(0.93); }
+.fab svg { width: 24px; height: 24px; }
+@media (max-width: 480px) { .fab { right: 18px; } }
+
+/* ================================================================
+   SCREENS
+   ================================================================ */
+.screen { display: none; animation: fadeIn 0.22s ease; }
+.screen.active { display: block; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+/* ================================================================
+   MODAL SHEET
+   ================================================================ */
+.overlay {
+  position: fixed; inset: 0;
+  background: rgba(20,16,12,0.45);
+  display: none; align-items: flex-end; justify-content: center;
+  z-index: 50;
+}
+.overlay.show { display: flex; }
+
+.sheet {
+  background: var(--cream);
+  width: 100%; max-width: 480px;
+  border-radius: 24px 24px 0 0;
+  padding: 10px 20px calc(24px + env(safe-area-inset-bottom));
+  max-height: 88vh;
+  overflow-y: auto;
+  animation: slideUp 0.25s ease;
+}
+@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+
+.sheet-handle {
+  width: 36px; height: 4px;
+  background: rgba(42,36,32,0.2);
+  border-radius: 4px;
+  margin: 6px auto 16px;
+}
+.sheet-title {
+  font-family: 'Fraunces', serif;
+  font-weight: 600;
+  font-size: var(--text-lg);
+  margin-bottom: 4px;
+}
+.sheet-sub {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  margin-bottom: 18px;
+}
+
+/* ================================================================
+   FORM FIELDS
+   ================================================================ */
+.field { margin-bottom: 16px; }
+
+.field label {
+  display: block;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--vault-2);
+  margin-bottom: 7px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.field input,
+.field select,
+.field textarea {
+  width: 100%;
+  border: 1.5px solid var(--line);
+  background: #fff;
+  border-radius: var(--r-md);
+  padding: 13px 14px;
+  font-size: var(--text-md);
+  font-family: 'Inter', sans-serif;
+  color: var(--ink);
+  transition: border-color 0.15s ease;
+}
+.field input:focus,
+.field select:focus,
+.field textarea:focus {
+  outline: none;
+  border-color: var(--vault-light);
+}
+
+.field-money { position: relative; }
+.field-money input {
+  padding-left: 34px;
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  font-size: var(--text-lg);
+}
+.field-money::before {
+  content: '€';
+  position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+/* ================================================================
+   EMOJI PICKER
+   ================================================================ */
+.emoji-grid {
+  display: grid;
+  grid-template-columns: repeat(6,1fr);
+  gap: 8px;
+}
+.emoji-pick {
+  aspect-ratio: 1;
+  border-radius: var(--r-md);
+  border: 1.5px solid var(--line);
+  background: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 19px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.emoji-pick.selected {
+  border-color: var(--brass);
+  background: rgba(184,134,43,0.12);
+}
+
+/* ================================================================
+   SEGMENTED CONTROL
+   ================================================================ */
+.seg {
+  display: flex;
+  background: #fff;
+  border: 1.5px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 3px;
+}
+.seg-opt {
+  flex: 1; text-align: center;
+  padding: 10px 6px;
+  border-radius: var(--r-sm);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.seg-opt.active { background: var(--vault); color: #fff; }
+.seg-opt.active.danger { background: var(--terracotta); }
+
+/* ================================================================
+   BUTTONS
+   ================================================================ */
+.btn {
+  display: block; width: 100%; text-align: center;
+  padding: 15px;
+  border-radius: var(--r-md);
+  font-weight: 700;
+  font-size: var(--text-md);
+  border: none;
+  margin-top: 6px;
+  cursor: pointer;
+  transition: opacity 0.15s ease, transform 0.1s ease;
+}
+.btn:active { opacity: 0.85; transform: scale(0.98); }
+
+.btn-primary { background: var(--vault); color: var(--cream); }
+.btn-primary.danger { background: var(--terracotta); }
+.btn-ghost { background: transparent; color: var(--vault-2); font-weight: 600; }
+.btn-danger-text { background: transparent; color: var(--terracotta); font-weight: 600; }
+
+/* ================================================================
+   INSTALLMENT PREVIEW
+   ================================================================ */
+.installment-preview {
+  background: rgba(184,134,43,0.1);
+  border-radius: var(--r-md);
+  padding: 13px 14px;
+  margin-bottom: 16px;
+  font-size: var(--text-sm);
+  color: var(--ink);
+  line-height: 1.5;
+}
+.installment-preview b { font-family: 'JetBrains Mono', monospace; }
+
+/* ================================================================
+   VAULT DETAIL
+   ================================================================ */
+.detail-header {
+  display: flex; align-items: center; gap: 12px;
+  padding: 18px 0 6px;
+}
+.detail-header-label {
+  font-weight: 700;
+  font-size: var(--text-base);
+  color: var(--text-muted);
+}
+
+.back-btn {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid var(--line);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--vault);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.back-btn:active { background: var(--cream-2); }
+
+.detail-hero {
+  text-align: center;
+  padding: 18px 10px 22px;
+}
+.detail-seal {
+  width: 74px; height: 74px;
+  border-radius: 50%;
+  margin: 0 auto 12px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 32px;
+  background: radial-gradient(circle at 32% 28%, var(--brass-light), var(--brass) 70%);
+  box-shadow:
+    inset 0 -4px 8px rgba(0,0,0,0.18),
+    inset 0 2px 4px rgba(255,255,255,0.45),
+    0 3px 8px rgba(0,0,0,0.15);
+}
+.detail-name {
+  font-family: 'Fraunces', serif;
+  font-weight: 600;
+  font-size: var(--text-xl);
+  margin-bottom: 4px;
+}
+.detail-balance {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  font-size: var(--text-2xl);
+  color: var(--vault);
+}
+.detail-balance.negative { color: var(--terracotta); }
+.detail-balance-label {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.action-row { display: flex; gap: 10px; padding: 0 0 22px; }
+.action-btn {
+  flex: 1;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: 14px 6px;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--ink);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.action-btn:active { background: var(--cream-2); }
+.action-btn .ic { font-size: 19px; }
+
+/* ================================================================
+   LOANS BOX & ROWS
+   ================================================================ */
+.loans-box {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: 4px 14px;
+  margin-bottom: 20px;
+}
+.loans-box.padded { padding: 14px; }
+
+.loan-row {
+  padding: 13px 0;
+  border-bottom: 1px solid var(--line);
+  display: flex; align-items: center; gap: 12px;
+}
+.loan-row:last-child { border-bottom: none; }
+
+.loan-info { flex: 1; }
+.loan-title { font-size: var(--text-sm); font-weight: 700; }
+.loan-sub   { font-size: var(--text-xs); color: var(--text-muted); margin-top: 2px; }
+
+.loan-progress-bg {
+  height: 5px;
+  background: rgba(42,36,32,0.08);
+  border-radius: 4px;
+  margin-top: 7px;
+  overflow: hidden;
+}
+.loan-progress-fill {
+  height: 100%;
+  background: var(--brass);
+  border-radius: 4px;
+}
+
+.loan-amount { text-align: right; }
+.loan-remaining {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  font-size: var(--text-base);
+  color: var(--terracotta);
+}
+.loan-pay-btn {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 5px 9px;
+  border-radius: var(--r-sm);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--vault-2);
+  background: rgba(31,58,46,0.08);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.loan-pay-btn:active { background: rgba(31,58,46,0.15); }
+
+/* ================================================================
+   TOAST
+   ================================================================ */
+.toast {
+  position: fixed;
+  top: 18px; left: 50%;
+  transform: translateX(-50%) translateY(-20px);
+  background: var(--vault);
+  color: #fff;
+  padding: 11px 18px;
+  border-radius: var(--r-full);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  z-index: 100;
+  opacity: 0;
+  transition: all 0.25s ease;
+  box-shadow: var(--shadow-md);
+  white-space: nowrap;
+  pointer-events: none;
+}
+.toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* ================================================================
+   WHO TAG
+   ================================================================ */
+.who-tag {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: var(--r-sm);
+  margin-left: 6px;
+}
+.who-tag.a { background: rgba(62,102,80,0.16);  color: var(--vault-2); }
+.who-tag.b { background: rgba(168,83,63,0.16); color: var(--terracotta); }
+
+/* ================================================================
+   MÊS SCREEN — MONTH NAV
+   ================================================================ */
+.month-nav {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 4px 2px 18px;
+}
+.month-nav-btn {
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid var(--line);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--vault);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.month-nav-btn:active { background: var(--cream-2); }
+
+.month-nav-label {
+  font-family: 'Fraunces', serif;
+  font-weight: 600;
+  font-size: var(--text-lg);
+  text-align: center;
+  text-transform: capitalize;
+}
+.month-nav-hint {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  text-align: center;
+  margin-top: 2px;
+}
+
+/* ================================================================
+   INCOME ROWS
+   ================================================================ */
+.income-row-compact {
+  display: flex; align-items: center; gap: 12px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: 12px 16px;
+  margin-bottom: 10px;
+  box-shadow: var(--shadow-sm);
+}
+.income-row-compact .bill-amount-edit { margin-left: auto; }
+
+.income-avatar {
+  width: 36px; height: 36px; min-width: 36px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700;
+  font-size: var(--text-base);
+  color: #fff;
+}
+.income-avatar.a { background: var(--vault-light); }
+.income-avatar.b { background: var(--terracotta-light); }
+
+.income-name { font-size: var(--text-base); font-weight: 700; }
+.income-sub  { font-size: var(--text-sm); color: var(--text-muted); }
+
+/* ================================================================
+   MONTH SUMMARY
+   ================================================================ */
+.month-summary {
+  background: var(--vault);
+  border-radius: var(--r-xl);
+  padding: 18px;
+  color: var(--cream);
+  margin-bottom: 22px;
+  box-shadow: var(--shadow-md);
+}
+.ms-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 7px 0;
+  font-size: var(--text-sm);
+}
+.ms-row.divider {
+  border-top: 1px solid rgba(255,255,255,0.18);
+  margin-top: 4px;
+  padding-top: 13px;
+}
+.ms-label { opacity: 0.8; }
+.ms-value { font-family: 'JetBrains Mono', monospace; font-weight: 700; }
+
+.ms-final { font-size: var(--text-lg); }
+.ms-final .ms-value { font-size: var(--text-xl); }
+.ms-final.positive .ms-value { color: #C9E4B8; }
+.ms-final.negative .ms-value { color: #F0AC9A; }
+.ms-final-label { opacity: 1; font-weight: 600; }
+
+/* ================================================================
+   BILL ROWS
+   ================================================================ */
+.bill-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 13px 4px;
+  border-bottom: 1px solid var(--line);
+}
+.bill-row:last-child { border-bottom: none; }
+
+.bill-check {
+  width: 24px; height: 24px; min-width: 24px;
+  border-radius: 50%;
+  border: 2px solid rgba(42,36,32,0.25);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px;
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.bill-check.checked { background: var(--vault-light); border-color: var(--vault-light); }
+
+.bill-info { flex: 1; min-width: 0; }
+.bill-name { font-size: var(--text-base); font-weight: 600; }
+.bill-name.paid { text-decoration: line-through; opacity: 0.5; }
+
+.bill-tag {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  padding: 1.5px 6px;
+  border-radius: var(--r-sm);
+  margin-left: 6px;
+  background: rgba(184,134,43,0.16);
+  color: var(--brass);
+  display: inline-block;
+  margin-top: 2px;
+}
+.bill-sub { font-size: var(--text-xs); color: var(--text-muted); margin-top: 1px; }
+
+.bill-amount-wrap { display: flex; align-items: center; gap: 8px; }
+.bill-amount {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  font-size: var(--text-base);
+}
+.bill-amount-input {
+  width: 84px;
+  border: 1.5px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 6px 8px 6px 24px;
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  font-size: var(--text-sm);
+}
+.bill-amount-edit { position: relative; display: flex; align-items: center; }
+.bill-amount-edit::before {
+  content: '€';
+  position: absolute; left: 8px;
+  font-size: 9.5px;
+  color: var(--text-faint);
+  font-family: 'JetBrains Mono', monospace;
+}
+.bill-delete { color: var(--text-faint); font-size: 16px; padding: 2px 4px; cursor: pointer; }
+
+/* ================================================================
+   SOURCE BALANCE CHIPS
+   ================================================================ */
+.source-balances { display: flex; gap: 8px; margin-bottom: 18px; }
+
+.source-balance-chip {
+  flex: 1;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 10px 8px;
+  text-align: center;
+}
+.sb-emoji  { font-size: 16px; margin-bottom: 3px; }
+.sb-label  { font-size: 9.5px; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; }
+.sb-value  { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: var(--text-sm); margin-top: 2px; }
+.sb-value.negative { color: var(--terracotta); }
+
+/* ================================================================
+   LEFTOVER BANNER
+   ================================================================ */
+.leftover-banner {
+  background: rgba(184,134,43,0.12);
+  border: 1px solid rgba(184,134,43,0.3);
+  border-radius: var(--r-lg);
+  padding: 16px;
+  text-align: center;
+  margin: 18px 0;
+}
+.lb-label {
+  font-size: var(--text-xs);
+  color: var(--brass);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 5px;
+}
+.lb-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  font-size: 24px;
+  color: var(--ink);
+  margin-bottom: 12px;
+}
+.lb-sub {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  margin-bottom: 12px;
+}
+.lb-actions { display: flex; gap: 8px; flex-direction: column; }
+.lb-actions .btn { margin-top: 0; font-size: var(--text-sm); padding: 11px; }
+
+/* ================================================================
+   PAYMENT SPLIT SHEET
+   ================================================================ */
+.split-row {
+  display: flex; align-items: center; gap: 10px;
+  background: #fff;
+  border: 1.5px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 11px 12px;
+  margin-bottom: 9px;
+}
+.split-row.suggested {
+  border-color: rgba(184,134,43,0.4);
+  background: rgba(184,134,43,0.06);
+}
+.split-emoji { font-size: 17px; width: 24px; text-align: center; }
+.split-info  { flex: 1; }
+.split-source-name { font-size: var(--text-sm); font-weight: 700; }
+.split-source-sub  { font-size: var(--text-xs); color: var(--text-muted); }
+
+.split-row .field-money { width: 106px; }
+.split-row input { padding: 8px 10px 8px 28px !important; font-size: var(--text-sm) !important; text-align: right; }
+.split-row .field-money::before { font-size: 10px; left: 8px; }
+
+.split-total-row {
+  display: flex; justify-content: space-between;
+  padding: 10px 4px;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  border-top: 1.5px dashed var(--line);
+  margin-top: 6px;
+}
+.split-total-row.balanced   { color: var(--vault-2); }
+.split-total-row.unbalanced { color: var(--terracotta); }
+
+/* ================================================================
+   LOADING & MISC
+   ================================================================ */
+.loading {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--text-faint);
+  font-size: var(--text-sm);
+}
+
+.transfer-preview {
+  font-size: var(--text-sm);
+  color: rgba(42,36,32,0.75);
+}
+
+/* ================================================================
+   EMPTY / NO-INCOME STATE
+   ================================================================ */
+.no-income-state {
+  text-align: center;
+  padding: 40px 20px;
+}
+.no-income-emoji { font-size: 44px; margin-bottom: 12px; }
+.no-income-title { margin-bottom: 8px; }
+.no-income-sub   { margin-bottom: 28px; }
+
+/* ================================================================
+   SETTINGS DELETE
+   ================================================================ */
+.delete-all-btn {
+  display: block; width: 100%; text-align: center;
+  padding: 15px;
+  border-radius: var(--r-md);
+  font-weight: 600;
+  font-size: var(--text-md);
+  border: none;
+  margin-top: 28px;
+  cursor: pointer;
+  background: transparent;
+  color: var(--terracotta);
+}
+</style>
+</head>
+<body>
+
+<div class="app" id="app">
+
+  <!-- ===================== HOME ===================== -->
+  <div class="screen" id="screen-home">
+    <div class="topbar">
+      <div class="brand">
+        <div class="brand-mark">
+          <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#F6EFE2" stroke-width="1.6"/><circle cx="12" cy="12" r="2.6" fill="#F6EFE2"/><path d="M12 6.4V8.4M12 15.6V17.6M6.4 12H8.4M15.6 12H17.6" stroke="#F6EFE2" stroke-width="1.6" stroke-linecap="round"/></svg>
+        </div>
+        <div class="brand-name">Cofres</div>
+      </div>
+      <div class="sync-pill" id="syncPill" onclick="loadAll()" title="Toque para sincronizar agora">
+        <span class="sync-dot" id="syncDot"></span>
+        <span id="syncStatus">sincronizando</span>
+      </div>
+    </div>
+
+    <div class="totals">
+      <div class="total-card">
+        <div class="total-label">Guardado nos cofres</div>
+        <div class="total-value" id="totalGuardado">€ 0,00</div>
+      </div>
+      <div class="total-card debt">
+        <div class="total-label">Emprestado (a devolver)</div>
+        <div class="total-value small" id="totalDevido">€ 0,00</div>
+      </div>
+    </div>
+
+    <div class="vault-count section-sub" id="vaultCount"></div>
+    <div class="vaults" id="vaultsList"></div>
+
+    <div class="add-dashed-btn" onclick="openNewVaultSheet()">
+      <span>＋</span> Criar novo cofre
+    </div>
+
+    <div class="section-head" style="margin-top:28px;">
+      <div class="section-title">Atividade recente</div>
+    </div>
+    <div class="activity" id="activityList"></div>
+  </div>
+
+  <!-- ===================== VAULT DETAIL ===================== -->
+  <div class="screen" id="screen-detail">
+    <div class="detail-header">
+      <div class="back-btn" onclick="goHome()">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none"><path d="M15 18l-6-6 6-6" stroke="#1F3A2E" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div class="detail-header-label">Detalhes do cofre</div>
+    </div>
+
+    <div class="detail-hero">
+      <div class="detail-seal" id="detailSeal">🏦</div>
+      <div class="detail-name" id="detailName">Cofre</div>
+      <div class="detail-balance" id="detailBalance">€ 0,00</div>
+      <div class="detail-balance-label" id="detailBalanceLabel">saldo disponível</div>
+    </div>
+
+    <div class="action-row">
+      <div class="action-btn" onclick="openMoveSheet('deposito')"><span class="ic">⬇️</span>Guardar</div>
+      <div class="action-btn" onclick="openMoveSheet('retirada')"><span class="ic">⬆️</span>Retirar</div>
+      <div class="action-btn" onclick="openTransferSheet()"><span class="ic">🔁</span>Enviar</div>
+      <div class="action-btn" onclick="openMoveSheet('emprestimo')"><span class="ic">🤝</span>Emprestar</div>
+      <div class="action-btn" onclick="openEditVaultSheet(currentVaultId)"><span class="ic">✏️</span>Editar</div>
+    </div>
+
+    <div id="loansSection">
+      <div class="section-head">
+        <div class="section-title">Empréstimos em aberto</div>
+      </div>
+      <div class="loans-box" id="loansBox"></div>
+    </div>
+
+    <div class="section-head" style="margin-top:8px;">
+      <div class="section-title">Histórico do cofre</div>
+    </div>
+    <div class="activity" id="detailActivity"></div>
+
+    <div style="margin-top:24px;">
+      <button class="btn btn-danger-text" onclick="confirmDeleteVault()">Excluir este cofre</button>
+    </div>
+  </div>
+
+  <!-- ===================== MÊS ===================== -->
+  <div class="screen active" id="screen-month">
+    <div class="topbar">
+      <div class="screen-title">Mês</div>
+    </div>
+
+    <div class="month-nav">
+      <div class="month-nav-btn" onclick="changeMonth(-1)">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none"><path d="M15 18l-6-6 6-6" stroke="#1F3A2E" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div>
+        <div class="month-nav-label" id="monthLabel">Junho 2026</div>
+        <div class="month-nav-hint" id="monthHint"></div>
+      </div>
+      <div class="month-nav-btn" onclick="changeMonth(1)">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none"><path d="M9 18l6-6-6-6" stroke="#1F3A2E" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+    </div>
+
+    <!-- NO INCOME STATE -->
+    <div id="noIncomeState" class="no-income-state" style="display:none;">
+      <div class="no-income-emoji">💸</div>
+      <div class="section-title no-income-title">Mês não iniciado</div>
+      <div class="section-sub no-income-sub">Você ainda não inseriu a renda ou o dinheiro que vai usar neste mês.</div>
+      <button class="btn btn-primary" onclick="openAddIncomeSheet()">+ Inserir Dinheiro do Mês</button>
+    </div>
+
+    <!-- MAIN MONTH CONTENT -->
+    <div id="mainMonthContent">
+      <div class="section-head"><div class="section-title">O que entrou</div></div>
+      <div id="incomeSection"></div>
+
+      <div class="section-head" style="margin-top:22px;"><div class="section-title">O que ainda resta</div></div>
+      <div class="source-balances" id="sourceBalances"></div>
+
+      <div class="section-head centered" style="margin-top:4px; gap:10px;">
+        <div>
+          <div class="section-title">Contas e Despesas</div>
+          <div class="section-sub" id="billsCount"></div>
+        </div>
+        <button class="btn btn-ghost" onclick="importPreviousMonthBills()">Pegar do mês anterior</button>
+      </div>
+      <div class="loans-box" id="billsBox" style="padding:4px 14px;"></div>
+      <div class="add-dashed-btn" onclick="openNewBillSheet()" style="margin-top:8px;">
+        <span>＋</span> Adicionar conta
+      </div>
+
+      <div class="month-summary" id="monthSummary"></div>
+
+      <div class="leftover-banner" id="leftoverBanner" style="display:none;">
+        <div class="lb-label">Sobra do Mês</div>
+        <div class="lb-value" id="leftoverValue">€ 0,00</div>
+        <div class="lb-sub">Seu dinheiro excedente livre para guardar.</div>
+        <div class="lb-actions" id="leftoverAction"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== FEIRA ===================== -->
+  <div class="screen" id="screen-feira">
+    <div class="topbar">
+      <div class="screen-title">Feira</div>
+    </div>
+    <div class="month-nav">
+      <div class="month-nav-btn" onclick="changeMonth(-1)">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none"><path d="M15 18l-6-6 6-6" stroke="#1F3A2E" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div>
+        <div class="month-nav-label" id="feiraMonthLabel">Junho 2026</div>
+        <div class="month-nav-hint" id="feiraMonthHint"></div>
+      </div>
+      <div class="month-nav-btn" onclick="changeMonth(1)">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none"><path d="M9 18l6-6-6-6" stroke="#1F3A2E" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+    </div>
+
+    <div class="section-head"><div class="section-title">Despesas da feira</div></div>
+    <div class="section-sub" style="margin:0 0 18px;">Registre até 4 despesas de feira, uma para cada semana do mês.</div>
+    <div id="feiraContent"></div>
+  </div>
+
+  <!-- ===================== EMPRESTIMOS ===================== -->
+  <div class="screen" id="screen-loans">
+    <div class="topbar">
+      <div class="screen-title">Empréstimos</div>
+    </div>
+    <div class="section-head"><div class="section-title">Empréstimos em aberto</div></div>
+    <div class="action-row" style="padding:0 14px 12px;">
+      <div class="action-btn" onclick="openMultiPaySheet()"><span class="ic">✅</span>Quitar vários</div>
+    </div>
+    <div class="loans-box padded" id="loansList"></div>
+    <div class="section-head" style="margin-top:18px;"><div class="section-title">Histórico de empréstimos</div></div>
+    <div class="activity" id="loanHistory"></div>
+  </div>
+
+  <!-- ===================== SETTINGS ===================== -->
+  <div class="screen" id="screen-settings">
+    <div class="topbar">
+      <div class="screen-title">Configurações</div>
+    </div>
+
+    <div class="field" style="margin-top:6px;">
+      <label>Nome da pessoa A</label>
+      <input type="text" id="nameA" placeholder="ex: Rodrigo" oninput="saveNames()" />
+    </div>
+    <div class="field">
+      <label>Nome da pessoa B</label>
+      <input type="text" id="nameB" placeholder="ex: Jacqueline" oninput="saveNames()" />
+    </div>
+
+    <div class="field" style="margin-top:20px;">
+      <label>URL de Sincronização (Google Sheets)</label>
+      <input type="url" id="syncUrl" placeholder="https://script.google.com/macros/s/..." oninput="saveSyncUrl()" />
+      <div class="section-sub" style="margin-top:6px; font-size:11px; line-height:1.5;">
+        Cole aqui a URL do seu Google Apps Script. Os dados serão enviados automaticamente ao editar e buscados ao abrir o app. Toque no indicador de status no topo para sincronizar manualmente.
+      </div>
+    </div>
+
+    <button class="delete-all-btn" onclick="confirmResetAll()">Apagar todos os dados</button>
+  </div>
+
+  <div class="loading" id="loadingState">Abrindo os cofres…</div>
+</div>
+
+<div class="fab" id="fab" onclick="fabAction()">
+  <span style="font-size:24px; line-height:1;">＋</span>
+</div>
+
+<!-- ===================== TAB BAR ===================== -->
+<div class="tabbar">
+  <div class="tabbar-inner">
+    <div class="tab active" id="tabMonth" onclick="goMonth()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+      Mês
+    </div>
+    <div class="tab" id="tabFeira" onclick="goFeira()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      Feira
+    </div>
+    <div class="tab" id="tabHome" onclick="goHome()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>
+      Cofres
+    </div>
+    <div class="tab" id="tabLoans" onclick="goLoans()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 12h18"/></svg>
+      Empréstimos
+    </div>
+    <div class="tab" id="tabSettings" onclick="goSettings()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3h.1a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9v.1a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.6 1z"/></svg>
+      Você
+    </div>
+  </div>
+</div>
+
+<!-- ===================== OVERLAY / SHEETS ===================== -->
+<div class="overlay" id="overlay" onclick="closeSheetOnBackdrop(event)">
+  <div class="sheet" id="sheet" onclick="event.stopPropagation()"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// --- Browser localStorage fallback ---
+if (!window.storage) {
+  window.storage = {
+    get: async (key) => {
+      const val = localStorage.getItem(key);
+      return val ? { value: val } : null;
+    },
+    set: async (key, value) => {
+      localStorage.setItem(key, value);
+      return true;
+    }
+  };
+}
+
+// ---------------------------------------------------------------
+// STATE
+// ---------------------------------------------------------------
+let vaults = [];          // {id, name, emoji, balance, goal, createdAt}
+let txns = [];            // {id, vaultId, type, amount, note, who, ts, loanId?}
+let loans = [];           // {id, vaultId, total, remaining, installments, paidInstallments, startMonthKey, who, note, ts}
+let who = null;           // 'a' | 'b'
+let names = { a: '', b: '' };
+let currentVaultId = null;
+let pendingEmoji = '🏦';
+const EMOJIS = ['🏦','🚗','💼','🏠','✈️','🎓','💍','🐶','🏥','🎉','📱','🛠️','👶','💰','🛒','🌴'];
+
+let bills = [];
+let monthData = {};
+let currentMonthKey = defaultReferenceMonthKey();
+
+// --- Cloud sync (Google Sheets / Apps Script) ---
+let syncUrl = '';                 // configured in Settings, local-only, never sent to the cloud
+let syncPushTimer = null;         // debounce timer for outgoing pushes
+const SYNC_DEBOUNCE_MS = 2000;    // wait 2s after the last edit before pushing
+const SYNC_KEYS = ['vaults','txns','loans','bills','monthData','names']; // keys that trigger a cloud push
+const MONEY_SOURCES = [
+  { key:'fisico', label:'Dinheiro físico', emoji:'💵' },
+  { key:'vale',   label:'Vale-alimentação', emoji:'🍽️' },
+  { key:'conta',  label:'Conta bancária',   emoji:'🏛️' }
+];
+
+function monthKeyFor(d){ return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'); }
+function defaultReferenceMonthKey(){
+  const now = new Date();
+  const d = now.getDate() >= 25 ? new Date(now.getFullYear(), now.getMonth()+1, 1) : now;
+  return monthKeyFor(d);
+}
+function previousMonthKey(key){
+  const [y,m] = key.split('-').map(Number);
+  return monthKeyFor(new Date(y, m-2, 1));
+}
+function monthLabelFor(key){
+  const [y,m] = key.split('-').map(Number);
+  return new Date(y, m-1, 1).toLocaleDateString('pt-BR', { month:'long', year:'numeric' });
+}
+function ensureMonthEntry(key){
+  if(!monthData[key]){
+    monthData[key] = {
+      income: { a: {fisico:0, vale:0, conta:0}, b: {fisico:0, vale:0, conta:0} },
+      billOverrides: {}, billsPaid: {}, vaultTransfers: { fisico:0, conta:0, vale:0 }, fairExpenses: [0,0,0,0]
+    };
+  }
+  const e = monthData[key];
+  if(!e.income) e.income = { a:{fisico:0,vale:0,conta:0}, b:{fisico:0,vale:0,conta:0} };
+  if(!e.billOverrides) e.billOverrides = {};
+  if(!e.billsPaid) e.billsPaid = {};
+  if(!e.hiddenBills) e.hiddenBills = {};
+  if(!e.vaultTransfers) e.vaultTransfers = { fisico:0, conta:0, vale:0 };
+  if(!e.fairExpenses) e.fairExpenses = [0,0,0,0];
+  return e;
+}
+
+function findFeiraVault(){ return vaults.find(v => v.name && v.name.trim().toLowerCase() === 'feira'); }
+function isTemporaryVault(v){ return v && (v.temporary || (v.name && v.name.trim().toLowerCase() === 'feira')); }
+function getFeiraVault(createIfMissing = false){
+  let feira = findFeiraVault();
+  if(!feira && createIfMissing){
+    feira = { id: uid(), name: 'Feira', emoji: '🛒', balance: 0, goal: 0, createdAt: Date.now(), temporary: true };
+    vaults.push(feira);
+    persistVaults();
+  }
+  return feira;
+}
+function fairExpenseTotal(entry){ return entry.fairExpenses.reduce((sum, v) => sum + (parseFloat(v) || 0), 0); }
+function billAmount(entry, bill){ return entry.billOverrides.hasOwnProperty(bill.id) ? entry.billOverrides[bill.id] : bill.defaultAmount; }
+function totalIncomeBySource(entry, source){ return (entry.income.a[source]||0) + (entry.income.b[source]||0); }
+function spentBySource(entry, source){
+  let total = 0;
+  Object.values(entry.billsPaid).forEach(split => { total += (split[source]||0); });
+  if(entry.vaultTransfers && entry.vaultTransfers[source]) total += entry.vaultTransfers[source];
+  return total;
+}
+function remainingBySource(entry, source){ return totalIncomeBySource(entry, source) - spentBySource(entry, source); }
+function defaultSourceSuggestion(entry, amount){
+  let remaining = amount;
+  const split = { vale:0, conta:0, fisico:0 };
+  ['vale','conta','fisico'].forEach(src => {
+    const available = Math.max(0, remainingBySource(entry, src));
+    const use = Math.min(available, remaining);
+    split[src] = use;
+    remaining -= use;
+  });
+  return split;
+}
+
+const fmt = (n) => {
+  const rounded = Math.round(n * 100) / 100;
+  return '€ ' + (rounded === 0 ? 0 : rounded).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
+};
+function uid(){ return Math.random().toString(36).slice(2,10) + Date.now().toString(36); }
+
+// ---------------------------------------------------------------
+// STORAGE
+// ---------------------------------------------------------------
+
+// "who" and "syncUrl" are device-local-only settings: they are never
+// part of the cloud payload and never trigger a cloud push.
+async function loadLocalOnlySettings(){
+  try{ const w  = await window.storage.get('who');     who     = w  ? JSON.parse(w.value) : null; }catch(e){ who = null; }
+  try{ const su = await window.storage.get('syncUrl'); syncUrl = su ? (su.value || '')    : '';   }catch(e){ syncUrl = ''; }
+}
+
+// Loads vaults/txns/loans/names/bills/monthData straight from localStorage.
+async function loadFromLocalStorage(){
+  try{ const v  = await window.storage.get('vaults');    vaults    = v  ? JSON.parse(v.value)  : []; }catch(e){}
+  try{ const t  = await window.storage.get('txns');      txns      = t  ? JSON.parse(t.value)  : []; }catch(e){}
+  try{ const l  = await window.storage.get('loans');     loans     = l  ? JSON.parse(l.value)  : []; }catch(e){}
+  try{ const n  = await window.storage.get('names');     names     = n  ? JSON.parse(n.value)  : { a:'Rodrigo', b:'Jacqueline' }; }catch(e){}
+  try{ const b  = await window.storage.get('bills');     bills     = b  ? JSON.parse(b.value)  : []; }catch(e){}
+  try{ const md = await window.storage.get('monthData'); monthData = md ? JSON.parse(md.value) : {}; }catch(e){}
+}
+
+// Applies a JSON payload received from the Google Sheets / Apps Script endpoint.
+function applyCloudData(data){
+  vaults    = Array.isArray(data.vaults)    ? data.vaults    : [];
+  txns      = Array.isArray(data.txns)      ? data.txns      : [];
+  loans     = Array.isArray(data.loans)     ? data.loans     : [];
+  bills     = Array.isArray(data.bills)     ? data.bills     : [];
+  monthData = (data.monthData && typeof data.monthData === 'object') ? data.monthData : {};
+  names     = (data.names && typeof data.names === 'object') ? data.names : { a:'', b:'' };
+  // "who" is intentionally left untouched: it's a per-device setting, not synced.
+}
+
+// Writes the synced state to localStorage WITHOUT scheduling a new cloud push
+// (used right after a successful cloud GET, to avoid an immediate redundant POST).
+async function persistLocalOnlySilently(){
+  try{ await window.storage.set('vaults',    JSON.stringify(vaults));    }catch(e){}
+  try{ await window.storage.set('txns',      JSON.stringify(txns));      }catch(e){}
+  try{ await window.storage.set('loans',     JSON.stringify(loans));     }catch(e){}
+  try{ await window.storage.set('bills',     JSON.stringify(bills));     }catch(e){}
+  try{ await window.storage.set('monthData', JSON.stringify(monthData));}catch(e){}
+  try{ await window.storage.set('names',     JSON.stringify(names));     }catch(e){}
+}
+
+function showLoadingState(msg){
+  const el = document.getElementById('loadingState');
+  el.textContent = msg;
+  el.style.display = '';
+}
+function hideLoadingState(){
+  document.getElementById('loadingState').style.display = 'none';
+}
+
+// Called once on page open, and manually whenever the user taps the sync pill.
+// Does a SINGLE fetch — no polling/setInterval, since Apps Script rate-limits.
+async function loadAll(){
+  await loadLocalOnlySettings();
+
+  if(syncUrl){
+    showLoadingState('Buscando dados da nuvem…');
+    try{
+      const res = await fetch(syncUrl, { method: 'GET' });
+      if(!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      if(!data || typeof data !== 'object') throw new Error('Resposta inválida da planilha');
+      applyCloudData(data);
+      await persistLocalOnlySilently();
+      setSyncStatus('synced');
+    }catch(err){
+      console.warn('Falha ao buscar dados da nuvem, usando dados locais:', err);
+      await loadFromLocalStorage();
+      setSyncStatus('nolink');
+    }
+  } else {
+    await loadFromLocalStorage();
+    setSyncStatus('nolink');
+  }
+
+  hideLoadingState();
+  renderAll();
+  renderMonth();
+}
+
+async function persistVaults()    { await safeSet('vaults',    vaults);    }
+async function persistTxns()      { await safeSet('txns',      txns);      }
+async function persistLoans()     { await safeSet('loans',     loans);     }
+async function persistNames()     { await safeSet('names',     names);     }
+async function persistWho()       { await safeSet('who',       who);       }
+async function persistBills()     { await safeSet('bills',     bills);     }
+async function persistMonthData() { await safeSet('monthData', monthData); }
+
+// Saves locally (instant, works offline) and, for cloud-synced keys,
+// schedules a debounced push of the FULL dataset to the Google Sheets URL.
+async function safeSet(key, value){
+  try{
+    await window.storage.set(key, JSON.stringify(value));
+    if(SYNC_KEYS.includes(key)){
+      scheduleCloudPush();
+    } else {
+      // local-only key (e.g. "who"): just reflect current resting status
+      setSyncStatus(syncUrl ? 'synced' : 'nolink');
+    }
+    return true;
+  }catch(e){
+    setSyncStatus('nolink');
+    return null;
+  }
+}
+
+// Debounces outgoing pushes so rapid edits collapse into a single request,
+// staying well clear of Apps Script's rate limits.
+function scheduleCloudPush(){
+  if(!syncUrl){ setSyncStatus('nolink'); return; }
+  setSyncStatus('saving');
+  clearTimeout(syncPushTimer);
+  syncPushTimer = setTimeout(pushToCloud, SYNC_DEBOUNCE_MS);
+}
+
+async function pushToCloud(){
+  if(!syncUrl) return;
+  // The sync URL itself is NEVER included in the payload sent to the cloud.
+  const payload = { vaults, txns, loans, bills, monthData, names };
+  try{
+    await fetch(syncUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // avoids CORS preflight on Apps Script
+      body: JSON.stringify(payload)
+    });
+    setSyncStatus('synced');
+  }catch(err){
+    console.warn('Falha ao enviar dados para a nuvem:', err);
+    setSyncStatus('nolink');
+  }
+}
+
+function setSyncStatus(state){
+  const dot = document.getElementById('syncDot');
+  const txt = document.getElementById('syncStatus');
+  if(state === 'saving'){
+    txt.textContent = 'salvando…';
+    dot.className = 'sync-dot';
+  } else if(state === 'synced'){
+    txt.textContent = 'sincronizado';
+    dot.className = 'sync-dot';
+  } else { // 'nolink' or any error/offline state
+    txt.textContent = 'offline / sem link';
+    dot.className = 'sync-dot off';
+  }
+}
+
+// ---------------------------------------------------------------
+// NAVIGATION
+// ---------------------------------------------------------------
+const TABS = ['tabHome','tabMonth','tabFeira','tabLoans','tabSettings'];
+
+function activateTab(id){
+  TABS.forEach(t => document.getElementById(t).classList.toggle('active', t === id));
+}
+function showScreen(id){
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+function goHome(){
+  showScreen('screen-home'); activateTab('tabHome');
+  document.getElementById('fab').style.display = 'flex'; currentVaultId = null; renderAll();
+}
+function goMonth(){
+  showScreen('screen-month'); activateTab('tabMonth');
+  document.getElementById('fab').style.display = 'none'; renderMonth();
+}
+function goSettings(){
+  showScreen('screen-settings'); activateTab('tabSettings');
+  document.getElementById('fab').style.display = 'none'; renderSettings();
+}
+function goFeira(){
+  showScreen('screen-feira'); activateTab('tabFeira');
+  document.getElementById('fab').style.display = 'none'; renderFeira();
+}
+function goLoans(){
+  showScreen('screen-loans'); activateTab('tabLoans');
+  document.getElementById('fab').style.display = 'none'; renderLoans();
+}
+function openVault(id){
+  currentVaultId = id; showScreen('screen-detail'); activateTab(null);
+  document.getElementById('fab').style.display = 'none'; renderDetail();
+}
+function fabAction(){ openNewVaultSheet(); }
+
+// ---------------------------------------------------------------
+// RENDER: HOME
+// ---------------------------------------------------------------
+function whoLabel(w){ return w === 'a' ? (names.a||'Pessoa A') : (names.b||'Pessoa B'); }
+
+function renderAll(){
+  const totalGuardado = vaults.filter(v => !isTemporaryVault(v)).reduce((s,v)=> s + Math.max(v.balance,0), 0);
+  const totalDevido   = loans.reduce((s,l)=> s + l.remaining, 0);
+  document.getElementById('totalGuardado').textContent = fmt(totalGuardado);
+  document.getElementById('totalDevido').textContent   = fmt(totalDevido);
+
+  const list = document.getElementById('vaultsList');
+  document.getElementById('vaultCount').textContent = vaults.length + (vaults.length===1?' cofre':' cofres');
+
+  if(vaults.length === 0){
+    list.innerHTML = '<div class="empty-note">Nenhum cofre ainda. Crie o primeiro.</div>';
+  } else {
+    list.innerHTML = vaults.map(v => {
+      const vaultLoans    = loans.filter(l => l.vaultId === v.id && l.remaining > 0);
+      const hasLoans      = vaultLoans.length > 0;
+      const owedFromVault = vaultLoans.reduce((s,l)=>s+l.remaining,0);
+
+      let goalHTML = '';
+      if(v.goal && v.goal > 0){
+        const pct = Math.min(100, Math.max(0, (v.balance / v.goal) * 100));
+        goalHTML = `
+          <div class="goal-bar-bg">
+            <div class="goal-bar-fill" style="width:${pct}%"></div>
+          </div>
+          <div class="goal-label">Meta: ${fmt(v.goal)}</div>`;
+      }
+
+      return `
+      <div class="vault-card" onclick="openVault('${v.id}')">
+        <div class="vault-seal">${v.emoji}</div>
+        <div class="vault-body">
+          <div class="vault-name">${escapeHtml(v.name)}</div>
+          <div class="vault-meta">
+            ${hasLoans
+              ? `<span class="loan-flag">⚠ ${fmt(owedFromVault)} emprestado</span>`
+              : `<span>saldo guardado</span>`}
+          </div>
+          ${goalHTML}
+        </div>
+        <div class="vault-right">
+          <div class="vault-balance ${v.balance < 0 ? 'negative':''}">${fmt(v.balance)}</div>
+        </div>
+        <div class="chevron">›</div>
+      </div>`;
+    }).join('');
+  }
+
+  const recent = [...txns].sort((a,b)=>b.ts-a.ts).slice(0,8);
+  document.getElementById('activityList').innerHTML = recent.length === 0
+    ? '<div class="empty-note">Sem movimentos ainda.</div>'
+    : recent.map(t => activityRowHtml(t)).join('');
+}
+
+function activityRowHtml(t){
+  const vault = vaults.find(v=>v.id===t.vaultId);
+  const vaultName = vault ? vault.name : 'Cofre removido';
+  let icon = '⬇️', cls = 'in',  sign = '+', amtCls = 'pos', title = 'Depósito';
+  if(t.type === 'retirada')  { icon='⬆️';  cls='out'; sign='-'; amtCls='neg'; title='Retirada'; }
+  if(t.type === 'emprestimo'){ icon='🤝';  cls='out'; sign='-'; amtCls='neg'; title='Pegou emprestado'; }
+  if(t.type === 'pagamento') { icon='✅';  cls='pay'; sign='+'; amtCls='pos'; title='Pagamento de parcela'; }
+  if(t.type === 'feira')     { icon='🛒';  cls='out'; sign='-'; amtCls='neg'; title='Feira'; }
+  const whoTag = (t.type === 'emprestimo' || t.type === 'pagamento') && t.who
+    ? `<span class="who-tag ${t.who}">${whoLabel(t.who)}</span>` : '';
+  return `
+  <div class="activity-item">
+    <div class="act-icon ${cls}">${icon}</div>
+    <div class="act-body">
+      <div class="act-title">${title} · ${escapeHtml(vaultName)}${whoTag}</div>
+      <div class="act-sub">${t.note ? escapeHtml(t.note) + ' · ' : ''}${formatDate(t.ts)}</div>
+    </div>
+    <div class="act-value ${amtCls}">${sign} ${fmt(t.amount)}</div>
+  </div>`;
+}
+
+function formatDate(ts){
+  const d = new Date(ts), today = new Date();
+  if(d.toDateString() === today.toDateString()) return 'hoje, ' + d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+  return d.toLocaleDateString('pt-BR', {day:'2-digit', month:'short'});
+}
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+
+// ---------------------------------------------------------------
+// RENDER: DETAIL
+// ---------------------------------------------------------------
+function renderDetail(){
+  const v = vaults.find(x=>x.id===currentVaultId);
+  if(!v){ goHome(); return; }
+  document.getElementById('detailSeal').textContent = v.emoji;
+  document.getElementById('detailName').textContent = v.name;
+  document.getElementById('detailBalance').textContent = fmt(v.balance);
+  document.getElementById('detailBalance').className = 'detail-balance' + (v.balance<0?' negative':'');
+
+  const vaultLoans      = loans.filter(l=>l.vaultId===v.id && l.remaining > 0);
+  const realCurrentMonth = defaultReferenceMonthKey();
+  document.getElementById('loansSection').style.display = vaultLoans.length ? 'block' : 'none';
+
+  document.getElementById('loansBox').innerHTML = vaultLoans.map(l => {
+    const paidPct       = Math.round((l.paidInstallments / l.installments) * 100);
+    const perInstallment = l.total / l.installments;
+    const isGraceActive  = l.startMonthKey && l.startMonthKey > realCurrentMonth;
+    const graceNote      = isGraceActive
+      ? `<span style="color:var(--terracotta); font-weight:700;">Começa em ${monthLabelFor(l.startMonthKey).split(' ')[0]}</span>` : '';
+    return `
+    <div class="loan-row">
+      <div class="loan-info">
+        <div class="loan-title">${escapeHtml(l.note || 'Empréstimo')} ${l.who ? `<span class="who-tag ${l.who}">${whoLabel(l.who)}</span>`:''}</div>
+        <div class="loan-sub">Parcela ${l.paidInstallments+1} de ${l.installments} · ${fmt(perInstallment)}/mês ${graceNote?'<br>'+graceNote:''}</div>
+        <div class="loan-progress-bg"><div class="loan-progress-fill" style="width:${paidPct}%"></div></div>
+        <div class="loan-pay-btn" onclick="openPayInstallment('${l.id}')">Pagar próxima parcela</div>
+      </div>
+      <div class="loan-amount">
+        <div class="loan-remaining">${fmt(l.remaining)}</div>
+        <div class="loan-sub">restante</div>
+      </div>
+    </div>`;
+  }).join('');
+
+  const vTxns = [...txns].filter(t=>t.vaultId===v.id);
+  if(isTemporaryVault(v)){
+    const entry = ensureMonthEntry(currentMonthKey);
+    entry.fairExpenses.forEach((amount, index) => {
+      const value = parseFloat(amount) || 0;
+      if(value > 0){
+        const [year, month] = currentMonthKey.split('-').map(Number);
+        vTxns.push({ id:`feira-${currentMonthKey}-${index}`, vaultId:v.id, type:'feira', amount:value,
+          note:`Saída feira - semana ${index+1}`, ts:new Date(year,month-1,Math.min(1+index*7,28)).getTime() });
+      }
+    });
+  }
+
+  vTxns.sort((a,b)=>b.ts-a.ts);
+  document.getElementById('detailActivity').innerHTML = vTxns.length
+    ? vTxns.map(t=>activityRowHtml(t)).join('')
+    : '<div class="empty-note">Nenhum movimento neste cofre ainda.</div>';
+}
+
+// ---------------------------------------------------------------
+// SETTINGS
+// ---------------------------------------------------------------
+function renderSettings(){
+  document.getElementById('nameA').value = names.a || '';
+  document.getElementById('nameB').value = names.b || '';
+  document.getElementById('syncUrl').value = syncUrl || '';
+}
+async function setWho(w){ who = w; await persistWho(); renderSettings(); showToast('Agora você é ' + whoLabel(w)); }
+let nameSaveTimer = null;
+function saveNames(){
+  names.a = document.getElementById('nameA').value;
+  names.b = document.getElementById('nameB').value;
+  clearTimeout(nameSaveTimer);
+  nameSaveTimer = setTimeout(()=> persistNames(), 500);
+}
+
+// Saves the Google Sheets sync URL LOCALLY ONLY (localStorage). This value
+// is never part of the JSON payload sent to the cloud.
+let syncUrlSaveTimer = null;
+function saveSyncUrl(){
+  syncUrl = document.getElementById('syncUrl').value.trim();
+  clearTimeout(syncUrlSaveTimer);
+  syncUrlSaveTimer = setTimeout(async () => {
+    try{ await window.storage.set('syncUrl', syncUrl); }catch(e){}
+    setSyncStatus(syncUrl ? 'synced' : 'nolink');
+    showToast(syncUrl ? 'URL de sincronização salva' : 'Sincronização com a nuvem desativada');
+  }, 500);
+}
+async function confirmResetAll(){
+  if(!confirm('Isso vai apagar TODOS os dados. Tem certeza?')) return;
+  vaults = []; txns = []; loans = []; bills = []; monthData = {};
+  await persistVaults(); await persistTxns(); await persistLoans(); await persistBills(); await persistMonthData();
+  showToast('Tudo apagado'); goHome();
+}
+
+// ---------------------------------------------------------------
+// SHEETS
+// ---------------------------------------------------------------
+function openSheet(html){ document.getElementById('sheet').innerHTML = html; document.getElementById('overlay').classList.add('show'); }
+function closeSheet(){ document.getElementById('overlay').classList.remove('show'); }
+function closeSheetOnBackdrop(e){ if(e.target.id === 'overlay') closeSheet(); }
+
+function openNewVaultSheet(){
+  pendingEmoji = '🏦';
+  window._pendingVaultEditId = null;
+  openSheet(`
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">Novo cofre</div>
+    <div class="sheet-sub">Dê um nome e escolha um símbolo para identificar esse cofre.</div>
+    <div class="field"><label>Nome do cofre</label><input type="text" id="newVaultName" placeholder="ex: Eletrodomésticos, Viagem" maxlength="30" /></div>
+    <div class="field"><label>Símbolo</label><div class="emoji-grid" id="emojiGrid"></div></div>
+    <div class="field"><label>Meta do cofre (opcional)</label><div class="field-money"><input type="number" id="newVaultGoal" placeholder="0,00" inputmode="decimal" /></div></div>
+    <div class="field"><label>Saldo inicial (opcional)</label><div class="field-money"><input type="number" id="newVaultBalance" placeholder="0,00" inputmode="decimal" /></div></div>
+    <button class="btn btn-primary" onclick="createVault()">Criar cofre</button>
+    <button class="btn btn-ghost" onclick="closeSheet()">Cancelar</button>
+  `);
+  document.getElementById('emojiGrid').innerHTML = EMOJIS.map(e => `<div class="emoji-pick ${e===pendingEmoji?'selected':''}" data-e="${e}" onclick="pickEmoji('${e}')">${e}</div>`).join('');
+}
+function openEditVaultSheet(vaultId){
+  const v = vaults.find(x => x.id === vaultId); if(!v) return;
+  pendingEmoji = v.emoji || '🏦';
+  window._pendingVaultEditId = v.id;
+  openSheet(`
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">Editar cofre</div>
+    <div class="sheet-sub">Altere o nome e o símbolo deste cofre.</div>
+    <div class="field"><label>Nome do cofre</label><input type="text" id="editVaultName" value="${escapeHtml(v.name)}" maxlength="30" /></div>
+    <div class="field"><label>Símbolo</label><div class="emoji-grid" id="emojiGrid"></div></div>
+    <button class="btn btn-primary" onclick="saveVaultEdit()">Salvar</button>
+    <button class="btn btn-ghost" onclick="closeSheet()">Cancelar</button>
+  `);
+  document.getElementById('emojiGrid').innerHTML = EMOJIS.map(e => `<div class="emoji-pick ${e===pendingEmoji?'selected':''}" data-e="${e}" onclick="pickEmoji('${e}')">${e}</div>`).join('');
+}
+async function saveVaultEdit(){
+  const vaultId = window._pendingVaultEditId;
+  const v = vaults.find(x => x.id === vaultId); if(!v) return;
+  const name = document.getElementById('editVaultName').value.trim();
+  if(!name){ showToast('Dê um nome ao cofre'); return; }
+  v.name = name; v.emoji = pendingEmoji;
+  await persistVaults(); closeSheet(); renderDetail(); renderAll(); showToast('Cofre atualizado');
+}
+function pickEmoji(e){
+  pendingEmoji = e;
+  document.querySelectorAll('.emoji-pick').forEach(el => el.classList.toggle('selected', el.dataset.e === e));
+}
+async function createVault(){
+  const name       = document.getElementById('newVaultName').value.trim();
+  const goalRaw    = document.getElementById('newVaultGoal').value;
+  const balanceRaw = document.getElementById('newVaultBalance').value;
+  if(!name){ showToast('Dê um nome ao cofre'); return; }
+  const goal    = goalRaw    ? parseFloat(goalRaw)    : null;
+  const balance = balanceRaw ? parseFloat(balanceRaw) : 0;
+  const v = { id: uid(), name, emoji: pendingEmoji, balance, goal, createdAt: Date.now() };
+  vaults.push(v); await persistVaults();
+  if(balance > 0){ txns.push({ id: uid(), vaultId: v.id, type:'deposito', amount: balance, note:'Saldo inicial', ts: Date.now() }); await persistTxns(); }
+  closeSheet(); showToast('Cofre "' + name + '" criado'); goHome();
+}
+
+function openMoveSheet(type){
+  const v = vaults.find(x=>x.id===currentVaultId); if(!v) return;
+  if(type==='emprestimo'){ openLoanSheet(); return; }
+  let title, sub, btnLabel, btnClass='';
+  if(type==='deposito'){ title='Guardar dinheiro'; sub=`Adicionar valor ao cofre "${v.name}".`; btnLabel='Guardar'; }
+  if(type==='retirada'){ title='Retirar dinheiro'; sub=`Tirar valor do cofre "${v.name}" — sem precisar devolver.`; btnLabel='Retirar'; btnClass='danger'; }
+  openSheet(`
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">${title}</div>
+    <div class="sheet-sub">${sub}</div>
+    <div class="field"><label>Valor</label><div class="field-money"><input type="number" id="moveAmount" placeholder="0,00" inputmode="decimal" autofocus /></div></div>
+    <div class="field"><label>Nota (opcional)</label><input type="text" id="moveNote" placeholder="ex: economia do mês" maxlength="60" /></div>
+    <button class="btn btn-primary ${btnClass}" onclick="confirmMove('${type}')">${btnLabel}</button>
+    <button class="btn btn-ghost" onclick="closeSheet()">Cancelar</button>
+  `);
+}
+async function confirmMove(type){
+  const v      = vaults.find(x=>x.id===currentVaultId);
+  const amount = parseFloat(document.getElementById('moveAmount').value);
+  const note   = document.getElementById('moveNote').value.trim();
+  if(!amount || amount <= 0){ showToast('Digite um valor válido'); return; }
+  if(type === 'retirada' && amount > v.balance){ if(!confirm('O cofre vai ficar negativo. Continuar?')) return; }
+  v.balance += (type === 'deposito' ? amount : -amount); await persistVaults();
+  txns.push({ id: uid(), vaultId: v.id, type, amount, note, ts: Date.now() }); await persistTxns();
+  closeSheet(); showToast(type==='deposito' ? 'Guardado!' : 'Retirado.'); renderDetail(); renderAll();
+}
+
+function openTransferSheet(){
+  const v = vaults.find(x=>x.id===currentVaultId); if(!v) return;
+  const targetOptions = [
+    `<option value="conta">Conta principal</option>`,
+    ...vaults.filter(x => x.id !== v.id).map(x => `<option value="${x.id}">Cofre: ${escapeHtml(x.name)}</option>`)
+  ].join('');
+  openSheet(`
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">Enviar valor</div>
+    <div class="sheet-sub">Envie dinheiro do cofre "${escapeHtml(v.name)}" para outro cofre, conta corrente ou dinheiro.</div>
+    <div class="field"><label>Valor</label><div class="field-money"><input type="number" id="transferAmount" placeholder="0,00" inputmode="decimal" oninput="renderTransferPreview()" autofocus /></div></div>
+    <div class="field"><label>Destino</label><select id="transferDestination" onchange="renderTransferPreview()"><option value="">Selecione</option>${targetOptions}<option value="dinheiro">Dinheiro</option></select></div>
+    <div class="field"><label>Nota (opcional)</label><input type="text" id="transferNote" placeholder="ex: levar para conta" maxlength="60" /></div>
+    <div class="field"><div id="transferPreview" class="transfer-preview">Preencha valor e destino para ver o saldo previsto.</div></div>
+    <button class="btn btn-primary" onclick="confirmTransfer()">Confirmar envio</button>
+    <button class="btn btn-ghost" onclick="closeSheet()">Cancelar</button>
+  `);
+}
+function renderTransferPreview(){
+  const v           = vaults.find(x=>x.id===currentVaultId); if(!v) return;
+  const amount      = parseFloat(document.getElementById('transferAmount').value) || 0;
+  const destination = document.getElementById('transferDestination').value;
+  const destVault   = vaults.find(x=>x.id===destination);
+  let text = 'Preencha valor e destino para ver o saldo previsto.';
+  if(destination){
+    if(amount > 0){
+      text = `Saldo previsto em "${escapeHtml(v.name)}": ${fmt(v.balance - amount)}. `;
+      if(destination === 'conta')    text += `Vai para conta corrente: ${fmt(amount)}.`;
+      else if(destination === 'dinheiro') text += `Você ficará com ${fmt(amount)} em dinheiro.`;
+      else text += `Saldo previsto em "${escapeHtml(destVault.name)}": ${fmt((destVault ? destVault.balance : 0) + amount)}.`;
+    } else {
+      text = `Saldo atual em "${escapeHtml(v.name)}": ${fmt(v.balance)}.`;
+    }
+  }
+  document.getElementById('transferPreview').textContent = text;
+}
+async function confirmTransfer(){
+  const v           = vaults.find(x=>x.id===currentVaultId); if(!v) return;
+  const amount      = parseFloat(document.getElementById('transferAmount').value);
+  const destination = document.getElementById('transferDestination').value;
+  const note        = document.getElementById('transferNote').value.trim();
+  if(!amount || amount <= 0){ showToast('Digite um valor válido'); return; }
+  if(!destination){ showToast('Selecione o destino'); return; }
+  if(amount > v.balance){ if(!confirm('O cofre vai ficar negativo. Continuar?')) return; }
+  v.balance -= amount;
+  if(destination !== 'conta' && destination !== 'dinheiro'){
+    const destVault = vaults.find(x=>x.id===destination);
+    if(destVault){
+      destVault.balance += amount;
+      txns.push({ id: uid(), vaultId: destVault.id, type:'deposito', amount, note: note || `Transferência de ${escapeHtml(v.name)}`, ts: Date.now() });
+    }
+  }
+  txns.push({ id: uid(), vaultId: v.id, type:'retirada', amount, note: note || `Envio para ${destination === 'conta' ? 'conta corrente' : 'dinheiro'}`, ts: Date.now() });
+  await persistVaults(); await persistTxns();
+  closeSheet(); showToast('Transferência registrada'); renderDetail(); renderAll();
+}
+
+function openLoanSheet(){
+  const v     = vaults.find(x=>x.id===currentVaultId);
+  const nameA = names.a || 'Pessoa A';
+  const nameB = names.b || 'Pessoa B';
+  openSheet(`
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">Pegar emprestado</div>
+    <div class="sheet-sub">Tire um valor do cofre "${v.name}" combinando em quantas vezes vai devolver.</div>
+    <div class="field"><label>Quem está pegando?</label><select id="loanWho"><option value="">Selecione</option><option value="a">${nameA}</option><option value="b">${nameB}</option></select></div>
+    <div class="field"><label>Valor a pegar</label><div class="field-money"><input type="number" id="loanAmount" placeholder="0,00" inputmode="decimal" oninput="updateLoanPreview()" /></div></div>
+    <div class="field">
+      <label>Devolver em</label>
+      <div class="seg" id="installmentSeg">
+        ${[1,2,3,4,6].map(n=>`<div class="seg-opt ${n===2?'active':''}" data-n="${n}" onclick="pickInstallments(${n})">${n}x</div>`).join('')}
+      </div>
+    </div>
+    <div class="field">
+      <label>Início do Pagamento</label>
+      <select id="loanStartOffset">
+        <option value="0">Neste mês</option>
+        <option value="1">Daqui a 1 mês (Carência)</option>
+        <option value="2">Daqui a 2 meses</option>
+      </select>
+    </div>
+    <div class="field"><label>Motivo (opcional)</label><input type="text" id="loanNote" placeholder="ex: faltou no fim do mês" maxlength="60" /></div>
+    <div class="installment-preview" id="loanPreview">Informe o valor para ver as parcelas.</div>
+    <button class="btn btn-primary danger" onclick="confirmLoan()">Confirmar empréstimo</button>
+    <button class="btn btn-ghost" onclick="closeSheet()">Cancelar</button>
+  `);
+  window._pendingInstallments = 2;
+}
+function pickInstallments(n){
+  window._pendingInstallments = n;
+  document.querySelectorAll('#installmentSeg .seg-opt').forEach(el => el.classList.toggle('active', parseInt(el.dataset.n) === n));
+  updateLoanPreview();
+}
+function updateLoanPreview(){
+  const amount  = parseFloat(document.getElementById('loanAmount').value) || 0;
+  const n       = window._pendingInstallments || 2;
+  const preview = document.getElementById('loanPreview');
+  if(amount <= 0){ preview.textContent = 'Informe o valor para ver as parcelas.'; return; }
+  preview.innerHTML = `Você vai devolver <b>${fmt(amount/n)}</b> por vez, em <b>${n}x</b>. Total: <b>${fmt(amount)}</b>.`;
+}
+async function confirmLoan(){
+  const v             = vaults.find(x=>x.id===currentVaultId);
+  const amount        = parseFloat(document.getElementById('loanAmount').value);
+  const note          = document.getElementById('loanNote').value.trim();
+  const n             = window._pendingInstallments || 2;
+  const whoSelection  = document.getElementById('loanWho').value || null;
+  if(!whoSelection){ showToast('Selecione quem está pegando o empréstimo'); return; }
+  if(!amount || amount <= 0){ showToast('Digite um valor válido'); return; }
+  if(amount > v.balance){ if(!confirm('O cofre vai ficar negativo com esse empréstimo. Continuar?')) return; }
+
+  const offset = parseInt(document.getElementById('loanStartOffset').value);
+  let startKey = defaultReferenceMonthKey();
+  if(offset > 0){
+    let [y, m] = startKey.split('-').map(Number);
+    startKey = monthKeyFor(new Date(y, m - 1 + offset, 1));
+  }
+
+  v.balance -= amount; await persistVaults();
+  const loan = { id: uid(), vaultId: v.id, total: amount, remaining: amount, installments: n, paidInstallments: 0, startMonthKey: startKey, who: whoSelection, note, ts: Date.now() };
+  loans.push(loan); await persistLoans();
+  txns.push({ id: uid(), vaultId: v.id, type:'emprestimo', amount, note: note || `Empréstimo em ${n}x`, who: whoSelection, ts: Date.now(), loanId: loan.id }); await persistTxns();
+  closeSheet(); showToast('Empréstimo registrado!'); renderDetail(); renderAll();
+}
+
+function openPayInstallment(loanId){
+  const loan       = loans.find(l=>l.id===loanId); if(!loan) return;
+  const payAmount  = Math.min(loan.total / loan.installments, loan.remaining);
+  const sourceVault = vaults.find(v=>v.id===loan.vaultId);
+  const autoReturn  = sourceVault && sourceVault.goal && sourceVault.balance < sourceVault.goal;
+  const nameA = names.a || 'Pessoa A'; const nameB = names.b || 'Pessoa B';
+  const destinationOptions = autoReturn ? '' : `
+    <option value="${loan.vaultId}">Voltar para ${sourceVault ? escapeHtml(sourceVault.name) : 'este cofre'}</option>
+    <option value="conta">Conta principal</option>
+    ${vaults.filter(v=>v.id!==loan.vaultId).map(v=>`<option value="${v.id}">Outro cofre: ${escapeHtml(v.name)}</option>`).join('')}`;
+  const helpText = autoReturn
+    ? '<div class="field"><div class="section-sub">A meta deste cofre ainda não foi batida. O valor será devolvido a ele automaticamente.</div></div>' : '';
+  openSheet(`
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">Pagar parcela</div>
+    <div class="sheet-sub">Parcela ${loan.paidInstallments+1} de ${loan.installments} do empréstimo "${escapeHtml(loan.note||'sem nota')}".</div>
+    <div class="field"><label>Quem está pagando?</label><select id="paymentWho"><option value="">Selecione</option><option value="a">${nameA}</option><option value="b">${nameB}</option></select></div>
+    <div class="field"><label>Valor da parcela</label><div class="field-money"><input type="number" id="payAmount" value="${payAmount.toFixed(2)}" inputmode="decimal" /></div></div>
+    ${helpText}
+    ${autoReturn ? '' : `<div class="field"><label>Destino</label><select id="loanDestination">${destinationOptions}</select></div>`}
+    <button class="btn btn-primary" onclick="confirmPayInstallment('${loanId}')">Confirmar pagamento</button>
+    <button class="btn btn-ghost" onclick="closeSheet()">Cancelar</button>
+  `);
+}
+function openMultiPaySheet(){
+  const openLoans = loans.filter(l => l.remaining > 0);
+  if(openLoans.length === 0){ showToast('Nenhum empréstimo em aberto.'); return; }
+  const loanItems = openLoans.map(l => {
+    const loanTitle = escapeHtml(l.note || 'Empréstimo');
+    const whoTag    = l.who ? ` <span class="who-tag ${l.who}">${whoLabel(l.who)}</span>` : '';
+    return `
+      <label class="field" style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
+        <input type="checkbox" class="multi-loan-checkbox" value="${l.id}" onchange="renderMultiPaySummary()" />
+        <div style="flex:1;">
+          <div style="font-weight:700;">${loanTitle}${whoTag}</div>
+          <div class="section-sub">${fmt(l.remaining)} restante · ${l.paidInstallments}/${l.installments} parcelas</div>
+        </div>
+      </label>`;
+  }).join('');
+  openSheet(`
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">Quitar vários empréstimos</div>
+    <div class="sheet-sub">Selecione os empréstimos e informe o valor pago.</div>
+    <div id="multiLoanList">${loanItems}</div>
+    <div class="field"><label>Valor pago</label><div class="field-money"><input type="number" id="multiPayAmount" placeholder="0,00" inputmode="decimal" /></div></div>
+    <div class="field"><label><input type="checkbox" id="forgivePartial" /> Perdoar parte do valor e quitar totalmente</label></div>
+    <div class="field" id="multiLoanSummary" style="font-size:13px; color:var(--text-muted);">Nenhum empréstimo selecionado.</div>
+    <button class="btn btn-primary" onclick="confirmMultiPay()">Confirmar pagamento</button>
+    <button class="btn btn-ghost" onclick="closeSheet()">Cancelar</button>
+  `);
+}
+function renderMultiPaySummary(){
+  const checked = Array.from(document.querySelectorAll('#multiLoanList input[type=checkbox]:checked'));
+  if(checked.length === 0){ document.getElementById('multiLoanSummary').textContent = 'Nenhum empréstimo selecionado.'; return; }
+  const total = loans.filter(l => checked.map(i=>i.value).includes(l.id)).reduce((sum,l)=>sum+l.remaining,0);
+  document.getElementById('multiLoanSummary').textContent = `${checked.length} empréstimo(s) selecionado(s). Total restante: ${fmt(total)}.`;
+}
+async function confirmMultiPay(){
+  const selected    = Array.from(document.querySelectorAll('#multiLoanList input[type=checkbox]:checked')).map(i=>i.value);
+  if(selected.length === 0){ showToast('Selecione ao menos um empréstimo.'); return; }
+  const amountInput  = parseFloat(document.getElementById('multiPayAmount').value || 0);
+  const forgive      = document.getElementById('forgivePartial').checked;
+  if(!forgive && (!amountInput || amountInput <= 0)){ showToast('Digite um valor válido para pagar.'); return; }
+  const selectedLoans = loans.filter(l => selected.includes(l.id));
+  let remainingAmount = amountInput;
+  const now = Date.now();
+  for(const loan of selectedLoans){
+    if(forgive){
+      const paid = Math.min(remainingAmount, loan.remaining);
+      remainingAmount -= paid; loan.remaining = 0; loan.paidInstallments = loan.installments;
+      if(paid > 0) txns.push({ id: uid(), vaultId: loan.vaultId, type:'pagamento', amount: paid, note:'Quitado com perdão parcial', who: null, ts: now, loanId: loan.id });
+      continue;
+    }
+    if(remainingAmount <= 0) break;
+    const paid = Math.min(remainingAmount, loan.remaining);
+    loan.remaining = Math.max(0, loan.remaining - paid);
+    loan.paidInstallments = loan.remaining === 0 ? loan.installments : Math.min(loan.installments, loan.paidInstallments + 1);
+    remainingAmount -= paid;
+    txns.push({ id: uid(), vaultId: loan.vaultId, type:'pagamento', amount: paid, note:'Pagamento múltiplo', who: null, ts: now, loanId: loan.id });
+  }
+  await persistLoans(); await persistTxns();
+  closeSheet(); showToast(forgive ? 'Empréstimos quitados com perdão parcial.' : 'Pagamento múltiplo registrado.');
+  renderLoans(); renderAll();
+}
+async function confirmPayInstallment(loanId){
+  const loan        = loans.find(l=>l.id===loanId); if(!loan) return;
+  const amount      = parseFloat(document.getElementById('payAmount').value);
+  const paymentWho  = document.getElementById('paymentWho').value || null;
+  if(!paymentWho){ showToast('Selecione quem está pagando'); return; }
+  if(!amount || amount <= 0){ showToast('Digite um valor válido'); return; }
+  const sourceVault = vaults.find(v=>v.id===loan.vaultId);
+  const autoReturn  = sourceVault && sourceVault.goal && sourceVault.balance < sourceVault.goal;
+  const destination = autoReturn ? loan.vaultId : (document.getElementById('loanDestination') ? document.getElementById('loanDestination').value : '');
+  if(!autoReturn && !destination){ showToast('Selecione onde devolver o valor'); return; }
+  loan.remaining = Math.max(0, loan.remaining - amount);
+  loan.paidInstallments = Math.min(loan.installments, loan.paidInstallments + 1);
+  if(destination !== 'conta'){
+    const targetVault = vaults.find(v=>v.id===destination);
+    if(targetVault){
+      targetVault.balance += amount;
+      txns.push({ id: uid(), vaultId: targetVault.id, type:'pagamento', amount, note:`Parcela ${loan.paidInstallments}/${loan.installments} (destino: ${escapeHtml(targetVault.name)})`, who: paymentWho, ts: Date.now(), loanId: loan.id });
+      await persistVaults(); await persistTxns();
+    }
+  } else {
+    txns.push({ id: uid(), vaultId: loan.vaultId, type:'pagamento', amount, note:`Parcela ${loan.paidInstallments}/${loan.installments} (conta principal)`, who: paymentWho, ts: Date.now(), loanId: loan.id });
+    await persistTxns();
+  }
+  await persistLoans();
+  closeSheet(); showToast(loan.remaining <= 0 ? 'Empréstimo pago! 🎉' : 'Parcela paga.'); renderDetail(); renderAll();
+}
+
+async function confirmDeleteVault(){
+  const v = vaults.find(x=>x.id===currentVaultId);
+  if(!v || !confirm(`Excluir o cofre "${v.name}"? O histórico dele também será removido.`)) return;
+  vaults = vaults.filter(x=>x.id!==v.id);
+  txns   = txns.filter(t=>t.vaultId!==v.id);
+  loans  = loans.filter(l=>l.vaultId!==v.id);
+  await persistVaults(); await persistTxns(); await persistLoans();
+  showToast('Cofre excluído'); goHome();
+}
+
+// ---------------------------------------------------------------
+// MÊS
+// ---------------------------------------------------------------
+function changeMonth(delta){
+  const [y,m] = currentMonthKey.split('-').map(Number);
+  currentMonthKey = monthKeyFor(new Date(y, m-1+delta, 1));
+  renderMonth(); renderActiveScreen();
+}
+function renderActiveScreen(){
+  if(document.getElementById('screen-feira').classList.contains('active')) renderFeira();
+  if(document.getElementById('screen-loans').classList.contains('active')) renderLoans();
+}
+function updateMonthHint(){
+  const [y,m] = currentMonthKey.split('-').map(Number);
+  let py = y, pm = m - 1; if(pm === 0){ pm = 12; py = y - 1; }
+  const prevLabel = new Date(py, pm-1, 1).toLocaleDateString('pt-BR', { month:'long' });
+  const currLabel = new Date(y, m-1, 1).toLocaleDateString('pt-BR', { month:'long' });
+  document.getElementById('monthHint').textContent = `recebi em ${prevLabel} para usar em ${currLabel}`;
+}
+
+function renderMonth(){
+  document.getElementById('monthLabel').textContent = monthLabelFor(currentMonthKey);
+  updateMonthHint();
+  const entry    = ensureMonthEntry(currentMonthKey);
+  const nameA    = names.a || 'Pessoa A';
+  const nameB    = names.b || 'Pessoa B';
+  let totalIncome = 0, incomeHtml = '';
+
+  ['a','b'].forEach(p => {
+    MONEY_SOURCES.forEach(src => {
+      const val = entry.income[p][src.key] || 0;
+      if(val > 0){
+        totalIncome += val;
+        incomeHtml += `
+          <div class="income-row-compact">
+            <div class="income-avatar ${p}">${(p==='a'?nameA:nameB).charAt(0).toUpperCase()}</div>
+            <div style="flex:1">
+              <div class="income-name">${p==='a'?nameA:nameB}</div>
+              <div class="income-sub">${src.emoji} ${src.label}</div>
+            </div>
+            <div class="bill-amount-edit"><input type="number" class="bill-amount-input" value="${val.toFixed(2)}" inputmode="decimal" onchange="updateIncome('${p}','${src.key}', this.value)" /></div>
+            <div class="bill-delete" onclick="removeIncome('${p}','${src.key}')">✕</div>
+          </div>`;
+      }
+    });
+  });
+
+  if(totalIncome === 0){
+    document.getElementById('noIncomeState').style.display = 'block';
+    document.getElementById('mainMonthContent').style.display = 'none';
+  } else {
+    document.getElementById('noIncomeState').style.display = 'none';
+    document.getElementById('mainMonthContent').style.display = 'block';
+    incomeHtml += `<div class="add-dashed-btn" style="border-style:solid;" onclick="openAddIncomeSheet()">＋ Adicionar mais renda</div>`;
+    document.getElementById('incomeSection').innerHTML = incomeHtml;
+    renderSourceBalances(entry);
+    renderBills(entry);
+    renderMonthSummary(entry, totalIncome);
+  }
+}
+
+function openAddIncomeSheet(){
+  const nameA = names.a || 'Pessoa A'; const nameB = names.b || 'Pessoa B';
+  openSheet(`
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">Adicionar Renda</div>
+    <div class="sheet-sub">De quem é este dinheiro e onde ele está (físico ou em conta)?</div>
+    <div class="field"><label>De quem?</label><select id="incWho"><option value="a">${nameA}</option><option value="b">${nameB}</option></select></div>
+    <div class="field"><label>Onde?</label><select id="incSource"><option value="">Selecione</option>${MONEY_SOURCES.map(s=>`<option value="${s.key}">${s.emoji} ${s.label}</option>`).join('')}</select></div>
+    <div class="field"><label>Valor recebido</label><div class="field-money"><input type="number" id="incAmount" placeholder="0,00" inputmode="decimal"></div></div>
+    <button class="btn btn-primary" onclick="confirmAddIncome()">Salvar Renda</button>
+  `);
+}
+async function confirmAddIncome(){
+  const w   = document.getElementById('incWho').value;
+  const src = document.getElementById('incSource').value;
+  const amt = parseFloat(document.getElementById('incAmount').value);
+  if(!src){ showToast('Selecione de onde vem o dinheiro'); return; }
+  if(!amt || amt <= 0){ showToast('Valor inválido'); return; }
+  const entry = ensureMonthEntry(currentMonthKey);
+  entry.income[w][src] = (entry.income[w][src] || 0) + amt;
+  await persistMonthData(); closeSheet(); renderMonth();
+}
+async function removeIncome(w, src){
+  if(!confirm("Remover esta renda?")) return;
+  const entry = ensureMonthEntry(currentMonthKey);
+  entry.income[w][src] = 0; await persistMonthData(); renderMonth();
+}
+
+function renderFeira(){
+  document.getElementById('feiraMonthLabel').textContent = monthLabelFor(currentMonthKey);
+  document.getElementById('feiraMonthHint').textContent = `Feira do mês ${monthLabelFor(currentMonthKey)}`;
+  const entry = ensureMonthEntry(currentMonthKey);
+  const rows = [1,2,3,4].map(i => {
+    const value = entry.fairExpenses[i-1] || 0;
+    return `
+      <div class="bill-row">
+        <div class="bill-info">
+          <div class="bill-name">Feira semana ${i}</div>
+          <div class="bill-sub">Despesa da feira para a semana ${i}</div>
+        </div>
+        <div class="bill-amount-wrap">
+          <div class="bill-amount-edit"><input type="number" class="bill-amount-input" inputmode="decimal" value="${value.toFixed(2)}" onchange="saveFairExpense(${i-1}, this.value)" /></div>
+        </div>
+      </div>`;
+  }).join('');
+  const total      = entry.fairExpenses.reduce((sum,v)=>sum+(parseFloat(v)||0),0);
+  const feiraVault = findFeiraVault();
+  const remaining  = feiraVault ? feiraVault.balance : 0;
+  document.getElementById('feiraContent').innerHTML = `
+    ${rows}
+    <div class="month-summary" style="margin-top:16px; background:#fff; border:1px solid var(--line); color:var(--ink);">
+      <div class="ms-row"><div class="ms-label" style="opacity:1;">Total da feira</div><div class="ms-value" style="color:var(--ink);">${fmt(total)}</div></div>
+      <div class="ms-row" style="margin-top:4px;"><div class="ms-label" style="opacity:1;">Saldo no cofre Feira</div><div class="ms-value" style="color:var(--ink);">${fmt(remaining)}</div></div>
+      <div class="ms-row"><div class="section-sub">Use as semanas para acompanhar as compras de feira mensalmente.</div></div>
+    </div>`;
+}
+async function saveFairExpense(index, value){
+  const entry    = ensureMonthEntry(currentMonthKey);
+  const oldValue = parseFloat(entry.fairExpenses[index]) || 0;
+  const newValue = parseFloat(value) || 0;
+  const diff     = newValue - oldValue;
+  entry.fairExpenses[index] = newValue;
+  const feiraVault = getFeiraVault(true);
+  if(diff !== 0){ feiraVault.balance -= diff; await persistVaults(); }
+  await persistMonthData(); renderFeira(); renderAll();
+}
+
+function renderLoans(){
+  const openLoans = loans.filter(l => l.remaining > 0);
+  const openHtml  = openLoans.length === 0 ? '<div class="empty-note">Nenhum empréstimo em aberto.</div>' : openLoans.map(l => {
+    const paidPct        = Math.round((l.paidInstallments / l.installments) * 100);
+    const perInstallment = l.total / l.installments;
+    const startsOn       = l.startMonthKey && l.startMonthKey !== defaultReferenceMonthKey()
+      ? `<div class="loan-sub">Começa em ${monthLabelFor(l.startMonthKey).split(' ')[0]}</div>` : '';
+    return `
+      <div class="loan-row">
+        <div class="loan-info">
+          <div class="loan-title">${escapeHtml(l.note || 'Empréstimo')} ${l.who ? `<span class="who-tag ${l.who}">${whoLabel(l.who)}</span>`:''}</div>
+          <div class="loan-sub">${fmt(l.remaining)} restante · ${l.paidInstallments}/${l.installments} parcelas ${startsOn}</div>
+          <div class="loan-progress-bg"><div class="loan-progress-fill" style="width:${paidPct}%"></div></div>
+          <div class="loan-pay-btn" onclick="openPayInstallment('${l.id}')">Pagar próxima parcela</div>
+        </div>
+        <div class="loan-amount">
+          <div class="loan-remaining">${fmt(l.total)}</div>
+          <div class="loan-sub">Total</div>
+        </div>
+      </div>`;
+  }).join('');
+  const history = [...txns].filter(t => t.type === 'emprestimo' || t.type === 'pagamento').sort((a,b)=>b.ts-a.ts);
+  document.getElementById('loansList').innerHTML   = openHtml;
+  document.getElementById('loanHistory').innerHTML = history.length === 0
+    ? '<div class="empty-note">Nenhum movimento de empréstimo ainda.</div>'
+    : history.map(t => activityRowHtml(t)).join('');
+}
+
+function renderSourceBalances(entry){
+  document.getElementById('sourceBalances').innerHTML = MONEY_SOURCES.map(src => {
+    const remaining = remainingBySource(entry, src.key);
+    return `
+    <div class="source-balance-chip">
+      <div class="sb-emoji">${src.emoji}</div>
+      <div class="sb-label">${src.label.split(' ')[0]}</div>
+      <div class="sb-value ${remaining<0?'negative':''}">${fmt(remaining)}</div>
+    </div>`;
+  }).join('');
+}
+
+function renderBills(entry){
+  const visibleBills = bills.filter(b => (!b.createdMonthKey || b.createdMonthKey <= currentMonthKey) && !entry.hiddenBills[b.id]);
+  document.getElementById('billsCount').textContent = visibleBills.length + (visibleBills.length===1?' conta':' contas');
+  const box = document.getElementById('billsBox');
+  if(visibleBills.length === 0){
+    box.innerHTML = '<div class="empty-note">Nenhuma conta cadastrada.</div>';
+  } else {
+    box.innerHTML = visibleBills.map(b => {
+      const amount      = billAmount(entry, b);
+      const paidSplit   = entry.billsPaid[b.id]; const paid = !!paidSplit;
+      const sourceSummary = paid
+        ? Object.entries(paidSplit).filter(([k,v])=>v>0).map(([k,v])=>{ const src=MONEY_SOURCES.find(s=>s.key===k); return `${src.emoji} ${fmt(v)}`; }).join(' · ')
+        : 'toque no valor para ajustar este mês';
+      const targetVault = b.targetVaultId ? vaults.find(v=>v.id === b.targetVaultId) : null;
+      const vaultBadge  = targetVault ? `<span class="bill-tag" style="background:var(--vault-light); color:#fff; font-size:9.5px;">🏦 p/ ${targetVault.name}</span>` : '';
+      return `
+      <div class="bill-row">
+        <div class="bill-check ${paid?'checked':''}" onclick="${paid ? `unpayBill('${b.id}')` : `openPayBillSheet('${b.id}')`}">${paid?'✓':''}</div>
+        <div class="bill-info">
+          <div class="bill-name ${paid?'paid':''}">${escapeHtml(b.name)} ${vaultBadge}</div>
+          <div class="bill-sub">${sourceSummary}</div>
+        </div>
+        <div class="bill-amount-wrap">
+          <div class="bill-amount-edit"><input type="number" class="bill-amount-input" inputmode="decimal" value="${amount}" ${paid?'disabled':''} onchange="updateBillAmount('${b.id}', this.value)" /></div>
+          <div class="bill-delete" onclick="deleteBill('${b.id}')">✕</div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+}
+
+async function unpayBill(billId){
+  const entry    = ensureMonthEntry(currentMonthKey);
+  const paidSplit = entry.billsPaid[billId];
+  const bill     = bills.find(x => x.id === billId);
+  if(bill && bill.targetVaultId && paidSplit){
+    const amount      = Object.values(paidSplit).reduce((sum,v)=>sum+(v||0),0);
+    const targetVault = vaults.find(x => x.id === bill.targetVaultId);
+    if(targetVault){
+      targetVault.balance -= amount;
+      const txIndex = txns.findIndex(t => t.vaultId===targetVault.id && t.type==='deposito' && t.amount===amount && t.note===`Transf. Agendada: ${bill.name}`);
+      if(txIndex !== -1) txns.splice(txIndex, 1);
+      await persistVaults(); await persistTxns();
+    }
+  }
+  delete entry.billsPaid[billId];
+  await persistMonthData(); renderMonth();
+}
+async function updateIncome(w, src, value){
+  const entry = ensureMonthEntry(currentMonthKey);
+  entry.income[w][src] = parseFloat(value) || 0;
+  await persistMonthData(); renderMonth();
+}
+async function updateBillAmount(billId, value){
+  const entry = ensureMonthEntry(currentMonthKey);
+  entry.billOverrides[billId] = parseFloat(value) || 0;
+  await persistMonthData(); renderMonth();
+}
+async function deleteBill(billId){
+  const b = bills.find(x=>x.id===billId);
+  if(!b || !confirm(`Remover esta conta deste mês: "${b.name}"?`)) return;
+  const entry     = ensureMonthEntry(currentMonthKey);
+  const paidSplit = entry.billsPaid[billId];
+  if(b.targetVaultId && paidSplit){
+    const amount      = Object.values(paidSplit).reduce((sum,v)=>sum+(v||0),0);
+    const targetVault = vaults.find(x => x.id === b.targetVaultId);
+    if(targetVault){
+      targetVault.balance -= amount;
+      const txIndex = txns.findIndex(t => t.vaultId===targetVault.id && t.type==='deposito' && t.amount===amount && t.note===`Transf. Agendada: ${b.name}`);
+      if(txIndex !== -1) txns.splice(txIndex, 1);
+      await persistVaults(); await persistTxns();
+    }
+  }
+  entry.hiddenBills[billId] = true;
+  delete entry.billsPaid[billId];
+  delete entry.billOverrides[billId];
+  await persistMonthData(); renderMonth();
+}
+
+function openNewBillSheet(){
+  openSheet(`
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">Nova conta / despesa</div>
+    <div class="sheet-sub">Cadastre uma despesa fixa ou variável.</div>
+    <div class="field"><label>Nome da despesa</label><input type="text" id="newBillName" placeholder="ex: Aluguel, Feira, Transferência" maxlength="30" /></div>
+    <div class="field">
+      <label>Destino do dinheiro (opcional)</label>
+      <select id="billTargetVault">
+        <option value="">Nenhum (Despesa comum externa)</option>
+        ${vaults.map(v => `<option value="${v.id}">Cofre: ${v.name}</option>`).join('')}
+      </select>
+    </div>
+    <div class="field">
+      <label>Tipo</label>
+      <div class="seg" id="billKindSeg">
+        <div class="seg-opt active" data-k="fixa" onclick="pickBillKind('fixa')">Fixa</div>
+        <div class="seg-opt" data-k="variavel" onclick="pickBillKind('variavel')">Variável</div>
+      </div>
+    </div>
+    <div class="field"><label id="billAmountLabel">Valor (repete todo mês)</label><div class="field-money"><input type="number" id="newBillAmount" placeholder="0,00" inputmode="decimal" /></div></div>
+    <button class="btn btn-primary" onclick="createBill()">Adicionar despesa</button>
+    <button class="btn btn-ghost" onclick="closeSheet()">Cancelar</button>
+  `);
+  window._pendingBillKind = 'fixa';
+}
+function pickBillKind(k){
+  window._pendingBillKind = k;
+  document.querySelectorAll('#billKindSeg .seg-opt').forEach(el => el.classList.toggle('active', el.dataset.k === k));
+  document.getElementById('billAmountLabel').textContent = k === 'fixa' ? 'Valor (repete todo mês)' : 'Valor estimado para este mês';
+}
+async function createBill(){
+  const name          = document.getElementById('newBillName').value.trim();
+  const amount        = parseFloat(document.getElementById('newBillAmount').value) || 0;
+  const targetVaultId = document.getElementById('billTargetVault').value || null;
+  const kind          = window._pendingBillKind || 'fixa';
+  if(!name){ showToast('Dê um nome à conta'); return; }
+  bills.push({ id: uid(), name, defaultAmount: amount, kind, targetVaultId, createdMonthKey: currentMonthKey });
+  await persistBills(); closeSheet(); showToast('Adicionado com sucesso'); renderMonth();
+}
+
+function openPayBillSheet(billId){
+  const b      = bills.find(x=>x.id===billId); if(!b) return;
+  const entry  = ensureMonthEntry(currentMonthKey);
+  const amount = billAmount(entry, b);
+  const sources   = ['conta','vale','fisico'];
+  const available = sources.map(src => ({ key: src, balance: Math.max(0, remainingBySource(entry, src)) }));
+  const suggestion = { conta:0, vale:0, fisico:0 };
+  let remaining = amount;
+  sources.forEach(src => {
+    const bal = available.find(x=>x.key===src).balance;
+    suggestion[src] = Math.min(remaining, bal);
+    remaining -= suggestion[src];
+  });
+  openSheet(`
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">Pagar ${escapeHtml(b.name)}</div>
+    <div class="sheet-sub">Valor: <b>${fmt(amount)}</b>. De onde vai sair esse dinheiro?</div>
+    ${available.map(src => {
+      const source = MONEY_SOURCES.find(x=>x.key===src.key);
+      return `
+      <div class="split-row ${suggestion[src.key]>0?'suggested':''}">
+        <div class="split-emoji">${source.emoji}</div>
+        <div class="split-info">
+          <div class="split-source-name">${source.label}</div>
+          <div class="split-source-sub">resta ${fmt(src.balance)} livre</div>
+        </div>
+        <div class="field-money"><input type="number" class="split-input" data-source="${src.key}" inputmode="decimal" value="${suggestion[src.key] || ''}" oninput="updateSplitTotal(${amount})" /></div>
+      </div>`;
+    }).join('')}
+    <div class="split-total-row" id="splitTotalRow"></div>
+    <button class="btn btn-primary" onclick="confirmPayBill('${billId}', ${amount})">Confirmar pagamento</button>
+    <button class="btn btn-ghost" onclick="closeSheet()">Cancelar</button>
+  `);
+  updateSplitTotal(amount);
+}
+function updateSplitTotal(amount){
+  let total = 0;
+  document.querySelectorAll('.split-input').forEach(i => total += (parseFloat(i.value) || 0));
+  const row  = document.getElementById('splitTotalRow');
+  const diff = Math.round((amount - total)*100)/100;
+  if(diff === 0)     { row.className = 'split-total-row balanced';   row.innerHTML = `<div>Total dividido</div><div>${fmt(total)} ✓</div>`; }
+  else if(diff > 0)  { row.className = 'split-total-row unbalanced'; row.innerHTML = `<div>Falta dividir</div><div>${fmt(diff)}</div>`; }
+  else               { row.className = 'split-total-row unbalanced'; row.innerHTML = `<div>Passou do valor em</div><div>${fmt(Math.abs(diff))}</div>`; }
+}
+async function confirmPayBill(billId, amount){
+  const split = { fisico:0, vale:0, conta:0 };
+  document.querySelectorAll('.split-input').forEach(i => { split[i.dataset.source] = parseFloat(i.value) || 0; });
+  if(Math.round((split.fisico+split.vale+split.conta)*100)/100 !== Math.round(amount*100)/100){
+    if(!confirm('A divisão não bate com o valor. Confirmar assim mesmo?')) return;
+  }
+  const entry = ensureMonthEntry(currentMonthKey);
+  entry.billsPaid[billId] = split;
+  const b = bills.find(x=>x.id===billId);
+  if(b && b.targetVaultId){
+    const v = vaults.find(x => x.id === b.targetVaultId);
+    if(v){
+      v.balance += amount;
+      txns.push({ id: uid(), vaultId: v.id, type:'deposito', amount, note:`Transf. Agendada: ${b.name}`, who, ts: Date.now() });
+      await persistVaults(); await persistTxns();
+    }
+  }
+  await persistMonthData(); closeSheet(); showToast('Conta paga'); renderMonth();
+}
+
+function importPreviousMonthBills(){
+  const prevKey   = previousMonthKey(currentMonthKey);
+  const prevEntry = monthData[prevKey];
+  if(!prevEntry){ showToast('Nenhum dado do mês anterior para importar.'); return; }
+  const entry = ensureMonthEntry(currentMonthKey);
+  lastMonthUndo = { monthKey: currentMonthKey, monthData: JSON.parse(JSON.stringify(entry)) };
+  entry.hiddenBills   = {...prevEntry.hiddenBills};
+  entry.billOverrides = {...prevEntry.billOverrides};
+  entry.billsPaid     = {};
+  persistMonthData(); renderMonth();
+  showToast('Despesas do mês anterior importadas.');
+}
+
+function renderMonthSummary(entry, totalIncome){
+  const visibleBills = bills.filter(b => !entry.hiddenBills[b.id]);
+  const totalBills   = visibleBills.reduce((s,b)=> s + billAmount(entry, b), 0);
+  const freeLeftover = remainingBySource(entry, 'fisico') + remainingBySource(entry, 'conta');
+
+  document.getElementById('monthSummary').innerHTML = `
+    <div class="ms-row" style="opacity:0.85;"><div class="ms-label">Renda total cadastrada</div><div class="ms-value">${fmt(totalIncome)}</div></div>
+    <div class="ms-row"><div class="ms-label">Contas e Despesas</div><div class="ms-value">− ${fmt(totalBills)}</div></div>
+    <div class="ms-row ms-final ${freeLeftover>=0?'positive':'negative'}">
+      <div class="ms-label ms-final-label">💵🏛️ ${freeLeftover>=0?'Sobra livre':'Falta'}</div>
+      <div class="ms-value">${fmt(Math.abs(freeLeftover))}</div>
+    </div>`;
+
+  const banner          = document.getElementById('leftoverBanner');
+  const vaultsWithGoals = vaults.filter(v => v.goal && v.balance < v.goal);
+
+  if(freeLeftover > 0 && totalIncome > 0){
+    banner.style.display = 'block';
+    document.getElementById('leftoverValue').textContent = fmt(freeLeftover);
+    document.getElementById('leftoverAction').innerHTML = vaultsWithGoals.length > 0
+      ? `<button class="btn btn-primary" style="margin-top:0;" onclick="autoDistributeLeftover()">✨ Distribuir pelas metas</button>
+         <button class="btn btn-ghost" style="margin-top:0;" onclick="goHome()">Guardar manualmente</button>`
+      : `<button class="btn btn-primary" onclick="goHome()">Ir guardar num cofre</button>`;
+  } else { banner.style.display = 'none'; }
+}
+
+async function autoDistributeLeftover(){
+  const entry         = ensureMonthEntry(currentMonthKey);
+  let fis             = remainingBySource(entry, 'fisico');
+  let cnt             = remainingBySource(entry, 'conta');
+  const vaultsToFund  = vaults.filter(v => v.goal && v.balance < v.goal);
+  if(vaultsToFund.length === 0){ showToast("Nenhum cofre com meta pendente!"); return; }
+
+  let distributedTotal = 0;
+  for(const v of vaultsToFund){
+    let needed   = v.goal - v.balance; if(needed <= 0) continue;
+    let takeCnt  = Math.min(cnt, needed); cnt -= takeCnt; needed -= takeCnt;
+    let takeFis  = Math.min(fis, needed); fis -= takeFis;
+    const taken  = takeCnt + takeFis;
+    if(taken > 0){
+      v.balance += taken;
+      txns.push({ id: uid(), vaultId: v.id, type:'deposito', amount: taken, note:'Sobra distribuída para meta', who, ts: Date.now() });
+      entry.vaultTransfers.conta  += takeCnt;
+      entry.vaultTransfers.fisico += takeFis;
+      distributedTotal += taken;
+    }
+  }
+  if(distributedTotal > 0){
+    await persistVaults(); await persistTxns(); await persistMonthData();
+    showToast(`€ ${distributedTotal.toFixed(2)} distribuídos!`);
+    renderMonth(); renderAll();
+  } else { showToast("Não há saldo livre suficiente."); }
+}
+
+let toastTimer = null;
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=> t.classList.remove('show'), 2200);
+}
+
+// ---------------------------------------------------------------
+// INIT
+// ---------------------------------------------------------------
+// Single fetch on open — NO setInterval/polling, since Apps Script rate-limits.
+// Use the sync pill (tap) to refresh manually afterwards.
+loadAll();
+</script>
+</body>
+</html>
