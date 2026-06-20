@@ -1,4 +1,4 @@
-# 🏦 Soma (Gestão Financeira a Dois)
+# 🏦 Dueto (Gestão Financeira a Dois)
 
 O **Soma** é um aplicativo web focado na gestão financeira compartilhada para casais. Projetado com foco na experiência mobile, ele funciona como uma SPA (*Single Page Application*) com visual nativo de aplicativo (estilo iOS).
 
