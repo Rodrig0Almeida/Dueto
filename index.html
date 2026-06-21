@@ -1266,22 +1266,22 @@ body {
    DARK MODE — full system
    ================================================================ */
 body.dark {
-  --cream:          #111114;
-  --cream-2:        #1C1C21;
-  --ink:            #EDE8E0;
-  --line:           rgba(255,255,255,0.1);
-  --text-muted:     rgba(237,232,224,0.5);
-  --text-faint:     rgba(237,232,224,0.3);
+  --cream:          #17171C;
+  --cream-2:        #24242A;
+  --ink:            #F5F1E9;
+  --line:           rgba(255,255,255,0.14);
+  --text-muted:     rgba(237,232,224,0.66);
+  --text-faint:     rgba(237,232,224,0.46);
   --shadow-sm:      0 1px 3px rgba(0,0,0,0.5), 0 4px 12px rgba(0,0,0,0.4);
   --shadow-md:      0 2px 4px rgba(0,0,0,0.5), 0 8px 24px rgba(0,0,0,0.5);
   /* Lighter stand-in for --vault when it's used as TEXT/ICON color on a dark
      background. --vault itself stays the theme's original dark shade because
      it's still used as a background fill (cards, buttons, FAB-like accents)
      which needs to stay rich/dark even in dark mode. */
-  --vault-text:     var(--vault-light);
+  --vault-text:     var(--vault-text-dark, var(--vault-light));
 }
 /* body background */
-body.dark { background: #111114; background-image: radial-gradient(circle at 100% 0%, rgba(184,134,43,0.06), transparent 45%), radial-gradient(circle at 0% 100%, rgba(31,58,46,0.08), transparent 40%); background-repeat: no-repeat; background-attachment: fixed; color: var(--ink); }
+body.dark { background: #17171C; background-image: radial-gradient(circle at 100% 0%, rgba(184,134,43,0.08), transparent 45%), radial-gradient(circle at 0% 100%, rgba(31,58,46,0.10), transparent 40%); background-repeat: no-repeat; background-attachment: fixed; color: var(--ink); }
 
 /* white cards → dark surface */
 body.dark .vault-card,
@@ -1299,7 +1299,7 @@ body.dark .chart-box,
 body.dark .add-dashed-btn,
 body.dark .emoji-pick,
 body.dark .loan-pay-btn,
-body.dark .loan-mini-btn { background: #1E1E24; color: var(--ink); border-color: rgba(255,255,255,0.09); }
+body.dark .loan-mini-btn { background: #2A2A31; color: var(--ink); border-color: rgba(255,255,255,0.13); }
 
 /* photo btn */
 body.dark .photo-btn { background: #1E1E24; color: var(--ink); border-color: rgba(255,255,255,0.12); }
@@ -1322,8 +1322,8 @@ body.dark .seg-opt.active { color: #fff; }
 /* tab bar */
 body.dark .tabbar { background: linear-gradient(to top, #111114 60%, rgba(17,17,20,0)); }
 body.dark .tabbar-inner { background: rgba(20,20,26,0.97); border-color: rgba(255,255,255,0.09); }
-body.dark .tab { color: rgba(237,232,224,0.45); }
-body.dark .tab.active { color: var(--vault-text); background: rgba(255,255,255,0.07); }
+body.dark .tab { color: rgba(237,232,224,0.62); }
+body.dark .tab.active { color: var(--vault-text); background: rgba(255,255,255,0.1); }
 
 /* sheet / modal */
 body.dark .sheet { background: #141418; }
@@ -1378,6 +1378,11 @@ body.dark .detail-balance.negative { color: var(--terracotta-light); }
 /* misc hardcoded light-mode text colors that need a dark-aware swap */
 body.dark .transfer-preview { color: rgba(237,232,224,0.75); }
 body.dark .chart-text { fill: rgba(237,232,224,0.6); }
+
+/* progress bar tracks — the original near-black/low-opacity track is
+   invisible against the dark background, so use a light translucent one */
+body.dark .goal-bar-bg,
+body.dark .loan-progress-bg { background: rgba(255,255,255,0.14); }
 
 
 /* ================================================================
@@ -2234,11 +2239,11 @@ async function toggleStatsTab(){
 // APPEARANCE — Dark Mode, Theme Color
 // ----------------------------------------------------------------
 const THEME_COLORS = [
-  { key:'green',     vault:'#1F3A2E', vaultLight:'#3E6650', vault2:'#2C4F3D', brass:'#B8862B', brassLight:'#D9A949', label:'Verde (padrão)' },
-  { key:'blue',      vault:'#1A2E4A', vaultLight:'#2E5075', vault2:'#243D63', brass:'#4A90C4', brassLight:'#6AAFD4', label:'Azul' },
-  { key:'purple',    vault:'#2D1F4A', vaultLight:'#5040A0', vault2:'#3D2C6A', brass:'#9B6FC4', brassLight:'#B890D4', label:'Roxo' },
-  { key:'terracotta',vault:'#4A2010', vaultLight:'#8B4020', vault2:'#6A2E18', brass:'#C4803A', brassLight:'#D4A060', label:'Terracota' },
-  { key:'slate',     vault:'#1A2535', vaultLight:'#2E4060', vault2:'#243050', brass:'#7090B0', brassLight:'#90B0C8', label:'Ardósia' },
+  { key:'green',     vault:'#1F3A2E', vaultLight:'#3E6650', vault2:'#2C4F3D', brass:'#B8862B', brassLight:'#D9A949', textDark:'#8FCBA8', label:'Verde (padrão)' },
+  { key:'blue',      vault:'#1A2E4A', vaultLight:'#2E5075', vault2:'#243D63', brass:'#4A90C4', brassLight:'#6AAFD4', textDark:'#8AB8E8', label:'Azul' },
+  { key:'purple',    vault:'#2D1F4A', vaultLight:'#5040A0', vault2:'#3D2C6A', brass:'#9B6FC4', brassLight:'#B890D4', textDark:'#C3A8EE', label:'Roxo' },
+  { key:'terracotta',vault:'#4A2010', vaultLight:'#8B4020', vault2:'#6A2E18', brass:'#C4803A', brassLight:'#D4A060', textDark:'#F0A878', label:'Terracota' },
+  { key:'slate',     vault:'#1A2535', vaultLight:'#2E4060', vault2:'#243050', brass:'#7090B0', brassLight:'#90B0C8', textDark:'#A8C2E0', label:'Ardósia' },
 ];
 
 function applyThemeColor(key){
@@ -2247,6 +2252,7 @@ function applyThemeColor(key){
   root.style.setProperty('--vault',       theme.vault);
   root.style.setProperty('--vault-2',     theme.vault2);
   root.style.setProperty('--vault-light', theme.vaultLight);
+  root.style.setProperty('--vault-text-dark', theme.textDark);
   root.style.setProperty('--brass',       theme.brass);
   root.style.setProperty('--brass-light', theme.brassLight);
   updateThemeColorMeta();
