@@ -1872,6 +1872,7 @@ body.dark .loan-progress-bg { background: rgba(255,255,255,0.14); }
       <div class="loans-box padded" style="display:flex;flex-direction:column;gap:10px;">
         <div style="font-size:12px;color:var(--text-muted);line-height:1.5;">Uma barra flutuante <b>🛠️</b> aparece em todas as telas. Ela dá acesso rápido a editar cofres, transações, empréstimos e exportar dados. Toque nos valores nas telas para editar direto.</div>
         <button class="btn btn-ghost" style="text-align:left;padding:10px 4px;" onclick="devExportData()">📤 Exportar dados (JSON)</button>
+        <button class="btn btn-ghost" style="text-align:left;padding:10px 4px;" onclick="devCheckForUpdate()">🔄 Verificar atualização</button>
       </div>
     </div>
     <div style="text-align:center; margin-top:24px; margin-bottom:4px; font-size:11px; color:var(--text-faint);">
@@ -1907,10 +1908,11 @@ body.dark .loan-progress-bg { background: rgba(255,255,255,0.14); }
   background:var(--cream);
   display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px;
   background-image:
-    radial-gradient(circle at 100% 0%, rgba(184,134,43,0.07), transparent 45%),
-    radial-gradient(circle at 0% 100%, rgba(31,58,46,0.06), transparent 40%);
+    radial-gradient(circle at 100% 0%, var(--splash-glow-1, rgba(184,134,43,0.07)), transparent 45%),
+    radial-gradient(circle at 0% 100%, var(--splash-glow-2, rgba(31,58,46,0.06)), transparent 40%);
+  transition: background 0.3s;
 ">
-  <div style="width:62px;height:62px;border-radius:16px;background:linear-gradient(155deg,var(--vault-light),var(--vault));display:flex;align-items:center;justify-content:center;box-shadow:0 4px 20px rgba(31,58,46,0.3);">
+  <div id="splashIcon" style="width:62px;height:62px;border-radius:16px;background:linear-gradient(155deg,var(--vault-light),var(--vault));display:flex;align-items:center;justify-content:center;box-shadow:0 4px 20px rgba(0,0,0,0.25);">
     <svg viewBox="0 0 64 64" width="40" height="36" xmlns="http://www.w3.org/2000/svg">
       <circle cx="22" cy="32" r="11" fill="none" stroke="#D9A949" stroke-width="3.5"/>
       <circle cx="42" cy="32" r="11" fill="none" stroke="#F6EFE2" stroke-width="3.5" opacity=".85"/>
@@ -2003,7 +2005,45 @@ if (!window.storage) {
 // Exibida em Configurações → Desenvolvedor → "Dueto vX.X.X"
 // Formato: MAJOR.MINOR.PATCH  — ex: 2.1.0 → 2.1.1 (bugfix) ou 2.2.0 (feature)
 // ================================================================
-const APP_VERSION = '2.1.2';  // last updated: 2026-06-25
+const APP_VERSION = '2.2.0';  // last updated: 2026-06-25
+
+// Dev Mode — Force reload bypassing all browser cache so device gets latest version.
+// Shows current version before reloading so the user can see if it changed.
+async function devCheckForUpdate(){
+  if(!localSettings.devMode){ showToast('Ative o Modo Dev primeiro'); return; }
+
+  showToast('🔄 Buscando versão mais recente…');
+
+  try {
+    // Fetch the page fresh with cache-busting query string
+    const url  = location.href.split('?')[0] + '?v=' + Date.now();
+    const resp = await fetch(url, { cache: 'no-store' });
+    const html = await resp.text();
+
+    // Extract APP_VERSION from the fetched HTML
+    const match = html.match(/const APP_VERSION\s*=\s*['"]([^'"]+)['"]/);
+    const remoteVersion = match ? match[1] : null;
+
+    if(!remoteVersion){
+      showToast('Não foi possível ler a versão remota.');
+      return;
+    }
+
+    if(remoteVersion === APP_VERSION){
+      showToast(`✅ Você já está na versão mais recente (${APP_VERSION}).`);
+      return;
+    }
+
+    // Versions differ — ask user to reload
+    const msg = `Nova versão disponível!\n\nAtual:  v${APP_VERSION}\nNova:   v${remoteVersion}\n\nAtualizar agora?`;
+    if(confirm(msg)){
+      // Hard reload bypassing cache
+      location.replace(location.href.split('?')[0] + '?v=' + Date.now());
+    }
+  } catch(err){
+    showToast('Erro ao verificar atualização: ' + err.message);
+  }
+}
 
 // ---------------------------------------------------------------
 // STATE
@@ -2175,6 +2215,9 @@ function hideLoadingState(){
 // Does a SINGLE fetch — no polling/setInterval, since Apps Script rate-limits.
 async function loadAll(){
   await loadLocalOnlySettings();
+
+  // Apply theme immediately so the splash screen already shows the correct colors
+  applyAllAppearance();
 
   if(syncUrl){
     // Fix 7: Show spinning "sincronizando" state on the pill while fetching
