@@ -2002,6 +2002,7 @@ html { background: #F6EFE2; }
     <span style="font-size:16px; min-width:20px;">🛠️</span>
     <button onclick="devOpenEditVaults()" style="flex-shrink:0;background:rgba(255,255,255,0.12);border:none;border-radius:var(--r-md);padding:7px 11px;color:#fff;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">✏️ Cofres</button>
     <button onclick="devOpenDeleteTxns()" style="flex-shrink:0;background:rgba(255,255,255,0.12);border:none;border-radius:var(--r-md);padding:7px 11px;color:#fff;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">🗑️ Transações</button>
+    <button onclick="devOpenHiddenBills()" style="flex-shrink:0;background:rgba(255,255,255,0.12);border:none;border-radius:var(--r-md);padding:7px 11px;color:#fff;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">🙈 Ocultas</button>
     <button onclick="devOpenEditLoans()" style="flex-shrink:0;background:rgba(255,255,255,0.12);border:none;border-radius:var(--r-md);padding:7px 11px;color:#fff;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">🔧 Empréstimos</button>
     <button onclick="devOpenEditMonthData()" style="flex-shrink:0;background:rgba(255,255,255,0.12);border:none;border-radius:var(--r-md);padding:7px 11px;color:#fff;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">📅 Mês</button>
     <button onclick="devOpenEditBills()" style="flex-shrink:0;background:rgba(255,255,255,0.12);border:none;border-radius:var(--r-md);padding:7px 11px;color:#fff;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">🧾 Contas</button>
@@ -2033,7 +2034,7 @@ if (!window.storage) {
 // Exibida em Configurações → Desenvolvedor → "Dueto vX.X.X"
 // Formato: MAJOR.MINOR.PATCH  — ex: 2.1.0 → 2.1.1 (bugfix) ou 2.2.0 (feature)
 // ================================================================
-const APP_VERSION = '2.4.0';  // last updated: 2026-06-25
+const APP_VERSION = '2.4.1';  // last updated: 2026-06-25
 
 // Dev Mode — Force reload bypassing all browser cache so device gets latest version.
 // Shows current version before reloading so the user can see if it changed.
@@ -3988,6 +3989,104 @@ async function restoreBill(billId){
   showToast('Despesa restaurada neste mês');
 }
 
+// Dev Mode: show ALL hidden bills across ALL months and allow restoring or permanently deleting them
+function devOpenHiddenBills(){
+  if(!localSettings.devMode){ showToast('Ative o Modo Dev primeiro'); return; }
+
+  // Collect all (monthKey, billId) pairs that are hidden
+  const hiddenEntries = [];
+  Object.entries(monthData).forEach(([monthKey, entry]) => {
+    if(!entry.hiddenBills) return;
+    Object.keys(entry.hiddenBills).forEach(billId => {
+      if(!entry.hiddenBills[billId]) return;
+      const b = bills.find(x => x.id === billId);
+      hiddenEntries.push({ monthKey, billId, billName: b ? b.name : `ID: ${billId}`, exists: !!b });
+    });
+  });
+
+  // Group by bill name for clarity
+  if(hiddenEntries.length === 0){
+    showToast('Nenhuma despesa oculta em nenhum mês 🎉'); return;
+  }
+
+  const rows = hiddenEntries
+    .sort((a,b) => b.monthKey.localeCompare(a.monthKey))
+    .map(e => `
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);">
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:14px;font-weight:700;color:${e.exists?'var(--ink)':'var(--text-muted)'};">
+            🙈 ${escapeHtml(e.billName)}${!e.exists?' <span style="font-size:10px;color:var(--terracotta);">(despesa apagada)</span>':''}
+          </div>
+          <div style="font-size:11px;color:var(--text-muted);">Oculta em: ${monthLabelFor(e.monthKey)}</div>
+        </div>
+        <button onclick="devRestoreBillInMonth('${e.billId}','${e.monthKey}')"
+          style="flex-shrink:0;background:rgba(31,58,46,0.1);border:none;border-radius:8px;padding:6px 10px;font-size:12px;font-weight:700;color:var(--vault-2);cursor:pointer;">↩ Restaurar</button>
+        <button onclick="devPurgeBillFromMonth('${e.billId}','${e.monthKey}')"
+          style="flex-shrink:0;background:rgba(180,60,40,0.1);border:none;border-radius:8px;padding:6px 10px;font-size:12px;font-weight:700;color:var(--terracotta);cursor:pointer;">✕ Apagar</button>
+      </div>`).join('');
+
+  openSheet(`
+    ${sheetHeader(`🙈 Despesas ocultas (${hiddenEntries.length})`)}
+    <div class="sheet-sub">Despesas ocultas em meses específicos. "Restaurar" faz ela voltar naquele mês. "Apagar" remove permanentemente.</div>
+    <button onclick="devPurgeAllHidden()" style="width:100%;padding:10px;background:rgba(180,60,40,0.1);border:1.5px solid var(--terracotta);border-radius:10px;color:var(--terracotta);font-size:13px;font-weight:700;cursor:pointer;margin-bottom:12px;">
+      🗑️ Apagar todas as ocultas permanentemente (${hiddenEntries.length})
+    </button>
+    ${rows}
+    <div style="height:20px;"></div>
+  `);
+}
+
+async function devRestoreBillInMonth(billId, monthKey){
+  const entry = monthData[monthKey]; if(!entry || !entry.hiddenBills) return;
+  delete entry.hiddenBills[billId];
+  await persistMonthData();
+  showToast('Restaurada em ' + monthLabelFor(monthKey));
+  closeSheet(); devOpenHiddenBills();
+  if(monthKey === currentMonthKey) renderMonth();
+}
+
+async function devPurgeBillFromMonth(billId, monthKey){
+  const b    = bills.find(x=>x.id===billId);
+  const name = b ? b.name : billId;
+  if(!confirm(`Apagar "${name}" permanentemente?\n\nEla será removida de todos os meses, não só de ${monthLabelFor(monthKey)}.`)) return;
+
+  // Remove from bills array entirely
+  bills = bills.filter(x => x.id !== billId);
+  // Clean all monthData references
+  Object.values(monthData).forEach(me => {
+    if(me.hiddenBills)   delete me.hiddenBills[billId];
+    if(me.billsPaid)     delete me.billsPaid[billId];
+    if(me.billOverrides) delete me.billOverrides[billId];
+  });
+  await persistBills(); await persistMonthData();
+  showToast(`"${name}" apagada permanentemente`);
+  closeSheet(); devOpenHiddenBills();
+  renderMonth();
+}
+
+async function devPurgeAllHidden(){
+  // Collect unique billIds that are hidden anywhere
+  const hiddenBillIds = new Set();
+  Object.values(monthData).forEach(entry => {
+    if(!entry.hiddenBills) return;
+    Object.keys(entry.hiddenBills).forEach(id => { if(entry.hiddenBills[id]) hiddenBillIds.add(id); });
+  });
+  if(hiddenBillIds.size === 0){ showToast('Nada para apagar'); return; }
+  if(!confirm(`Apagar permanentemente ${hiddenBillIds.size} despesa(s) oculta(s)?\n\nElas serão removidas de todos os meses.`)) return;
+
+  hiddenBillIds.forEach(billId => {
+    bills = bills.filter(x => x.id !== billId);
+    Object.values(monthData).forEach(me => {
+      if(me.hiddenBills)   delete me.hiddenBills[billId];
+      if(me.billsPaid)     delete me.billsPaid[billId];
+      if(me.billOverrides) delete me.billOverrides[billId];
+    });
+  });
+  await persistBills(); await persistMonthData();
+  showToast(`${hiddenBillIds.size} despesa(s) apagada(s) ✓`);
+  closeSheet(); renderMonth();
+}
+
 async function unpayBill(billId){
   const entry    = ensureMonthEntry(currentMonthKey);
   const paidSplit = entry.billsPaid[billId];
@@ -4019,13 +4118,11 @@ async function deleteBill(billId){
   const b = bills.find(x=>x.id===billId);
   if(!b) return;
 
-  // Offer two options: hide only this month, or delete permanently
-  const choice = confirm(`Excluir "${b.name}" permanentemente de todos os meses?\n\nOK = Excluir para sempre\nCancelar = Apenas ocultar neste mês`);
+  if(!confirm(`Apagar "${b.name}"?\n\nEla será removida permanentemente de todos os meses.`)) return;
 
+  // Reverse vault deposit if this bill had a target vault and was paid this month
   const entry = ensureMonthEntry(currentMonthKey);
   const paidSplit = entry.billsPaid[billId];
-
-  // Reverse vault deposit if this bill had a target vault and was paid
   if(b.targetVaultId && paidSplit){
     const amount      = Object.values(paidSplit).reduce((sum,v)=>sum+(v||0),0);
     const targetVault = vaults.find(x => x.id === b.targetVaultId);
@@ -4037,26 +4134,20 @@ async function deleteBill(billId){
     }
   }
 
-  if(choice){
-    // Excluir permanentemente
-    bills = bills.filter(x => x.id !== billId);
-    // Clean up month data references across all months
-    Object.values(monthData).forEach(me => {
-      if(me.hiddenBills) delete me.hiddenBills[billId];
-      if(me.billsPaid)   delete me.billsPaid[billId];
-      if(me.billOverrides) delete me.billOverrides[billId];
-    });
-    await persistBills();
-    showToast(`"${b.name}" excluída permanentemente.`);
-  } else {
-    // Apenas esconder neste mês
-    entry.hiddenBills[billId] = true;
-    delete entry.billsPaid[billId];
-    delete entry.billOverrides[billId];
-    showToast(`"${b.name}" ocultada neste mês.`);
-  }
+  // Remove permanently from bills array
+  bills = bills.filter(x => x.id !== billId);
 
-  await persistMonthData(); renderMonth();
+  // Clean up all month data references
+  Object.values(monthData).forEach(me => {
+    if(me.hiddenBills)   delete me.hiddenBills[billId];
+    if(me.billsPaid)     delete me.billsPaid[billId];
+    if(me.billOverrides) delete me.billOverrides[billId];
+  });
+
+  await persistBills();
+  await persistMonthData();
+  showToast(`"${b.name}" apagada.`);
+  renderMonth();
 }
 
 function openNewBillSheet(){
