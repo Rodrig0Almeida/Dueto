@@ -2034,7 +2034,7 @@ if (!window.storage) {
 // Exibida em Configurações → Desenvolvedor → "Dueto vX.X.X"
 // Formato: MAJOR.MINOR.PATCH  — ex: 2.1.0 → 2.1.1 (bugfix) ou 2.2.0 (feature)
 // ================================================================
-const APP_VERSION = '2.4.2';  // last updated: 2026-07-01
+const APP_VERSION = '2.5.0';  // last updated: 2026-07-08 — added: Adiantar pagamento de empréstimo
 
 // Dev Mode — Force reload bypassing all browser cache so device gets latest version.
 // Shows current version before reloading so the user can see if it changed.
@@ -3623,6 +3623,62 @@ async function confirmPayInstallment(loanId){
   closeSheet(); showToast(loan.remaining <= 0 ? 'Empréstimo pago! 🎉' : 'Parcela paga.'); renderDetail(); renderAll();
 }
 
+function openAdvancePaymentSheet(loanId){
+  const loan = loans.find(l=>l.id===loanId); if(!loan) return;
+  const sourceVault = vaults.find(v=>v.id===loan.vaultId);
+  const autoReturn  = sourceVault && sourceVault.goal && sourceVault.balance < sourceVault.goal;
+  const nameA = names.a || 'Pessoa A'; const nameB = names.b || 'Pessoa B';
+  const destinationOptions = autoReturn ? '' : `
+    <option value="${loan.vaultId}">Voltar para ${sourceVault ? escapeHtml(sourceVault.name) : 'este cofre'}</option>
+    <option value="conta">Conta principal</option>
+    ${vaults.filter(v=>v.id!==loan.vaultId).map(v=>`<option value="${v.id}">Outro cofre: ${escapeHtml(v.name)}</option>`).join('')}`;
+  const helpText = autoReturn
+    ? '<div class="field"><div class="section-sub">A meta deste cofre ainda não foi batida. O valor será devolvido a ele automaticamente.</div></div>' : '';
+  openSheet(`
+    ${sheetHeader(`Adiantar pagamento`)}
+    <div class="sheet-sub">Empréstimo "${escapeHtml(loan.note || 'sem nota')}" — restam <b>${fmt(loan.remaining)}</b>. Pague qualquer valor à frente das parcelas normais.</div>
+    <div class="field"><label>Quem está pagando?</label><select id="advanceWho"><option value="">Selecione</option><option value="a">${nameA}</option><option value="b">${nameB}</option></select></div>
+    <div class="field"><label>Valor a adiantar</label><div class="field-money"><input type="number" id="advanceAmount" placeholder="0,00" inputmode="decimal" /></div></div>
+    ${helpText}
+    ${autoReturn ? '' : `<div class="field"><label>Destino</label><select id="advanceDestination">${destinationOptions}</select></div>`}
+    <button class="btn btn-primary" onclick="confirmAdvancePayment('${loanId}')">Confirmar adiantamento</button>
+    <button class="btn btn-ghost" onclick="closeSheet()">Cancelar</button>
+  `);
+}
+async function confirmAdvancePayment(loanId){
+  const loan       = loans.find(l=>l.id===loanId); if(!loan) return;
+  const rawAmount  = parseFloat(document.getElementById('advanceAmount').value);
+  const paymentWho = document.getElementById('advanceWho').value || null;
+  if(!paymentWho){ showToast('Selecione quem está pagando'); return; }
+  if(!rawAmount || rawAmount <= 0){ showToast('Digite um valor válido'); return; }
+  const amount = Math.min(rawAmount, loan.remaining);
+  const sourceVault = vaults.find(v=>v.id===loan.vaultId);
+  const autoReturn  = sourceVault && sourceVault.goal && sourceVault.balance < sourceVault.goal;
+  const destination = autoReturn ? loan.vaultId : (document.getElementById('advanceDestination') ? document.getElementById('advanceDestination').value : '');
+  if(!autoReturn && !destination){ showToast('Selecione onde devolver o valor'); return; }
+  const perInstallment = loan.total / loan.installments;
+  loan.remaining = Math.max(0, loan.remaining - amount);
+  const completedByAmount = loan.installments - Math.ceil(loan.remaining / perInstallment);
+  loan.paidInstallments = Math.min(loan.installments, Math.max(loan.paidInstallments, completedByAmount));
+  if(destination !== 'conta'){
+    const targetVault = vaults.find(v=>v.id===destination);
+    if(targetVault){
+      targetVault.balance += amount;
+      txns.push({ id: uid(), vaultId: targetVault.id, type:'pagamento', amount, note:`Adiantamento (destino: ${escapeHtml(targetVault.name)})`, who: paymentWho, ts: Date.now(), loanId: loan.id });
+      await persistVaults(); await persistTxns();
+    }
+  } else {
+    const entry = ensureMonthEntry(currentMonthKey);
+    entry.vaultTransfers.conta = (entry.vaultTransfers.conta || 0) - amount;
+    await persistMonthData();
+    txns.push({ id: uid(), vaultId: loan.vaultId, type:'pagamento', amount, note:'Adiantamento (conta principal)', who: paymentWho, ts: Date.now(), loanId: loan.id });
+    await persistTxns();
+  }
+  await persistLoans();
+  closeSheet(); showToast(loan.remaining <= 0 ? 'Empréstimo quitado com adiantamento! 🎉' : `Adiantamento de ${fmt(amount)} registrado.`);
+  renderLoans(); renderDetail(); renderAll();
+}
+
 async function confirmDeleteVault(){
   const v = vaults.find(x=>x.id===currentVaultId);
   if(!v || !confirm(`Excluir o cofre "${v.name}"? O histórico dele também será removido.`)) return;
@@ -3837,6 +3893,7 @@ function renderLoans(){
           </div>
           <div class="person-loan-actions">
             <div class="loan-mini-btn pay" onclick="event.stopPropagation(); openPayInstallment('${l.id}')">Quitar</div>
+            <div class="loan-mini-btn" onclick="event.stopPropagation(); openAdvancePaymentSheet('${l.id}')">Adiantar</div>
             <div class="loan-mini-btn" onclick="event.stopPropagation(); openPostponeLoanSheet('${l.id}')">Adiar</div>
             <div class="loan-mini-btn" onclick="event.stopPropagation(); openEditInstallmentsSheet('${l.id}')">Parcelas</div>
           </div>
