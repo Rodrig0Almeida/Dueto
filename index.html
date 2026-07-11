@@ -1611,7 +1611,7 @@ body.dark .loan-progress-bg { background: rgba(255,255,255,0.14); }
         </div>
         <div class="screen-title">Cofres</div>
       </div>
-      <div class="sync-pill" id="syncPill-home" onclick="loadAll()" title="Toque para sincronizar agora">
+      <div class="sync-pill" id="syncPill-home" onclick="loadAll(true)" title="Toque para sincronizar agora">
         <span class="sync-dot" id="syncDot-home"></span>
         <span id="syncStatus-home">sincronizando</span>
       </div>
@@ -1691,7 +1691,7 @@ body.dark .loan-progress-bg { background: rgba(255,255,255,0.14); }
         </div>
         <div class="screen-title">Mês</div>
       </div>
-      <div class="sync-pill" id="syncPill-month" onclick="loadAll()" title="Toque para sincronizar agora">
+      <div class="sync-pill" id="syncPill-month" onclick="loadAll(true)" title="Toque para sincronizar agora">
         <span class="sync-dot" id="syncDot-month"></span>
         <span id="syncStatus-month">sincronizando</span>
       </div>
@@ -1761,7 +1761,7 @@ body.dark .loan-progress-bg { background: rgba(255,255,255,0.14); }
         </div>
         <div class="screen-title">Feira</div>
       </div>
-      <div class="sync-pill" id="syncPill-feira" onclick="loadAll()" title="Toque para sincronizar agora">
+      <div class="sync-pill" id="syncPill-feira" onclick="loadAll(true)" title="Toque para sincronizar agora">
         <span class="sync-dot" id="syncDot-feira"></span>
         <span id="syncStatus-feira">sincronizando</span>
       </div>
@@ -1793,7 +1793,7 @@ body.dark .loan-progress-bg { background: rgba(255,255,255,0.14); }
         </div>
         <div class="screen-title">Empréstimos</div>
       </div>
-      <div class="sync-pill" id="syncPill-loans" onclick="loadAll()" title="Toque para sincronizar agora">
+      <div class="sync-pill" id="syncPill-loans" onclick="loadAll(true)" title="Toque para sincronizar agora">
         <span class="sync-dot" id="syncDot-loans"></span>
         <span id="syncStatus-loans">sincronizando</span>
       </div>
@@ -1813,7 +1813,7 @@ body.dark .loan-progress-bg { background: rgba(255,255,255,0.14); }
         </div>
         <div class="screen-title">Você</div>
       </div>
-      <div class="sync-pill" id="syncPill-settings" onclick="loadAll()" title="Toque para sincronizar agora">
+      <div class="sync-pill" id="syncPill-settings" onclick="loadAll(true)" title="Toque para sincronizar agora">
         <span class="sync-dot" id="syncDot-settings"></span>
         <span id="syncStatus-settings">sincronizando</span>
       </div>
@@ -1900,7 +1900,7 @@ body.dark .loan-progress-bg { background: rgba(255,255,255,0.14); }
         </div>
         <div class="screen-title">Estatísticas</div>
       </div>
-      <div class="sync-pill" id="syncPill-stats" onclick="loadAll()" title="Toque para sincronizar agora">
+      <div class="sync-pill" id="syncPill-stats" onclick="loadAll(true)" title="Toque para sincronizar agora">
         <span class="sync-dot" id="syncDot-stats"></span>
         <span id="syncStatus-stats">sincronizando</span>
       </div>
@@ -2034,7 +2034,7 @@ if (!window.storage) {
 // Exibida em Configurações → Desenvolvedor → "Dueto vX.X.X"
 // Formato: MAJOR.MINOR.PATCH  — ex: 2.1.0 → 2.1.1 (bugfix) ou 2.2.0 (feature)
 // ================================================================
-const APP_VERSION = '2.6.0';  // last updated: 2026-07-11 — added: quantidade livre de compras na aba Feira; corrigido: resíduo de ponto flutuante no saldo dos cofres
+const APP_VERSION = '2.6.0a';  // last updated: 2026-07-11 — added: quantidade livre de compras na aba Feira; corrigido: resíduo de ponto flutuante no saldo dos cofres
 
 // Dev Mode — Force reload bypassing all browser cache so device gets latest version.
 // Shows current version before reloading so the user can see if it changed.
@@ -2243,7 +2243,7 @@ function hideLoadingState(){
 
 // Called once on page open, and manually whenever the user taps the sync pill.
 // Does a SINGLE fetch — no polling/setInterval, since Apps Script rate-limits.
-async function loadAll(){
+async function loadAll(manual = false){
   await loadLocalOnlySettings();
 
   // Apply theme immediately so the splash screen already shows the correct colors
@@ -2277,14 +2277,17 @@ async function loadAll(){
       applyCloudData(data);
       await persistLocalOnlySilently();
       setSyncStatus('synced');
+      if(manual) showToast('✅ Sincronizado com sucesso');
     }catch(err){
       console.warn('Falha ao buscar dados da nuvem, usando dados locais:', err);
+      if(manual) showToast(`⚠️ Sync falhou: ${err.message || err}`);
       await loadFromLocalStorage();
       setSyncStatus('nolink');
     }
   } else {
     await loadFromLocalStorage();
     setSyncStatus('nolink');
+    if(manual) showToast('⚠️ Nenhuma URL de sincronização configurada em Configurações');
   }
 
   applyTabVisibility();
