@@ -2034,7 +2034,7 @@ if (!window.storage) {
 // Exibida em Configurações → Desenvolvedor → "Dueto vX.X.X"
 // Formato: MAJOR.MINOR.PATCH  — ex: 2.1.0 → 2.1.1 (bugfix) ou 2.2.0 (feature)
 // ================================================================
-const APP_VERSION = '2.5.0';  // last updated: 2026-07-08 — added: Adiantar pagamento de empréstimo
+const APP_VERSION = '2.6.0';  // last updated: 2026-07-11 — added: quantidade livre de compras na aba Feira; corrigido: resíduo de ponto flutuante no saldo dos cofres
 
 // Dev Mode — Force reload bypassing all browser cache so device gets latest version.
 // Shows current version before reloading so the user can see if it changed.
@@ -2161,6 +2161,7 @@ const fmt = (n) => {
   const rounded = Math.round(n * 100) / 100;
   return '€ ' + (rounded === 0 ? 0 : rounded).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
 };
+function round2(n){ return Math.round((n + Number.EPSILON) * 100) / 100; }
 function uid(){ return Math.random().toString(36).slice(2,10) + Date.now().toString(36); }
 
 // ---------------------------------------------------------------
@@ -2662,7 +2663,7 @@ function renderDetail(){
       if(value > 0){
         const [year, month] = currentMonthKey.split('-').map(Number);
         vTxns.push({ id:`feira-${currentMonthKey}-${index}`, vaultId:v.id, type:'feira', amount:value,
-          note:`Saída feira - semana ${index+1}`, ts:new Date(year,month-1,Math.min(1+index*7,28)).getTime() });
+          note:`Saída feira - compra ${index+1}`, ts:new Date(year,month-1,Math.min(1+index*7,28)).getTime() });
       }
     });
   }
@@ -3348,7 +3349,7 @@ async function confirmMove(type){
   const note   = document.getElementById('moveNote').value.trim();
   if(!amount || amount <= 0){ showToast('Digite um valor válido'); return; }
   if(type === 'retirada' && amount > v.balance){ if(!confirm('O cofre vai ficar negativo. Continuar?')) return; }
-  v.balance += (type === 'deposito' ? amount : -amount); await persistVaults();
+  v.balance = round2(v.balance + (type === 'deposito' ? amount : -amount)); await persistVaults();
   txns.push({ id: uid(), vaultId: v.id, type, amount, note, ts: Date.now() }); await persistTxns();
   closeSheet(); showToast(type==='deposito' ? 'Guardado!' : 'Retirado.'); renderDetail(); renderAll();
 }
@@ -3396,11 +3397,11 @@ async function confirmTransfer(){
   if(!amount || amount <= 0){ showToast('Digite um valor válido'); return; }
   if(!destination){ showToast('Selecione o destino'); return; }
   if(amount > v.balance){ if(!confirm('O cofre vai ficar negativo. Continuar?')) return; }
-  v.balance -= amount;
+  v.balance = round2(v.balance - amount);
   if(destination !== 'conta' && destination !== 'dinheiro'){
     const destVault = vaults.find(x=>x.id===destination);
     if(destVault){
-      destVault.balance += amount;
+      destVault.balance = round2(destVault.balance + amount);
       txns.push({ id: uid(), vaultId: destVault.id, type:'deposito', amount, note: note || `Transferência de ${escapeHtml(v.name)}`, ts: Date.now() });
     }
   }
@@ -3477,7 +3478,7 @@ async function confirmLoan(){
     startKey = monthKeyFor(new Date(y, m - 1 + offset, 1));
   }
 
-  v.balance -= amount; await persistVaults();
+  v.balance = round2(v.balance - amount); await persistVaults();
   const loan = { id: uid(), vaultId: v.id, total: amount, remaining: amount, installments: n, paidInstallments: 0, startMonthKey: startKey, who: whoSelection, note, ts: Date.now() };
   loans.push(loan); await persistLoans();
   txns.push({ id: uid(), vaultId: v.id, type:'emprestimo', amount, note: note || `Empréstimo em ${n}x`, who: whoSelection, ts: Date.now(), loanId: loan.id }); await persistTxns();
@@ -3605,7 +3606,7 @@ async function confirmPayInstallment(loanId){
   if(destination !== 'conta'){
     const targetVault = vaults.find(v=>v.id===destination);
     if(targetVault){
-      targetVault.balance += amount;
+      targetVault.balance = round2(targetVault.balance + amount);
       txns.push({ id: uid(), vaultId: targetVault.id, type:'pagamento', amount, note:`Parcela ${loan.paidInstallments}/${loan.installments} (destino: ${escapeHtml(targetVault.name)})`, who: paymentWho, ts: Date.now(), loanId: loan.id });
       await persistVaults(); await persistTxns();
     }
@@ -3663,7 +3664,7 @@ async function confirmAdvancePayment(loanId){
   if(destination !== 'conta'){
     const targetVault = vaults.find(v=>v.id===destination);
     if(targetVault){
-      targetVault.balance += amount;
+      targetVault.balance = round2(targetVault.balance + amount);
       txns.push({ id: uid(), vaultId: targetVault.id, type:'pagamento', amount, note:`Adiantamento (destino: ${escapeHtml(targetVault.name)})`, who: paymentWho, ts: Date.now(), loanId: loan.id });
       await persistVaults(); await persistTxns();
     }
@@ -3824,16 +3825,19 @@ function renderFeira(){
   document.getElementById('feiraMonthLabel').textContent = monthLabelFor(currentMonthKey);
   document.getElementById('feiraMonthHint').textContent = `Feira do mês ${monthLabelFor(currentMonthKey)}`;
   const entry = ensureMonthEntry(currentMonthKey);
-  const rows = [1,2,3,4].map(i => {
-    const value = entry.fairExpenses[i-1] || 0;
+  const rows = entry.fairExpenses.map((raw, i) => {
+    const value = parseFloat(raw) || 0;
+    const removeBtn = entry.fairExpenses.length > 1
+      ? `<div class="bill-delete" onclick="removeFairExpense(${i})" title="Remover compra">✕</div>` : '';
     return `
       <div class="bill-row">
         <div class="bill-info">
-          <div class="bill-name">Feira semana ${i}</div>
-          <div class="bill-sub">Despesa da feira para a semana ${i}</div>
+          <div class="bill-name">Compra ${i+1}</div>
+          <div class="bill-sub">Despesa de feira</div>
         </div>
         <div class="bill-amount-wrap">
-          <div class="bill-amount-edit"><input type="number" class="bill-amount-input" inputmode="decimal" value="${value.toFixed(2)}" onchange="saveFairExpense(${i-1}, this.value)" /></div>
+          <div class="bill-amount-edit"><input type="number" class="bill-amount-input" inputmode="decimal" value="${value.toFixed(2)}" onchange="saveFairExpense(${i}, this.value)" /></div>
+          ${removeBtn}
         </div>
       </div>`;
   }).join('');
@@ -3842,10 +3846,11 @@ function renderFeira(){
   const remaining  = feiraVault ? feiraVault.balance : 0;
   document.getElementById('feiraContent').innerHTML = `
     ${rows}
+    <div class="add-dashed-btn" onclick="addFairExpense()" style="margin-top:8px;">+ Adicionar compra</div>
     <div class="month-summary" style="margin-top:16px;">
       <div class="ms-row"><div class="ms-label" style="opacity:1;">Total da feira</div><div class="ms-value">${fmt(total)}</div></div>
       <div class="ms-row" style="margin-top:4px;"><div class="ms-label" style="opacity:1;">Saldo no cofre Feira</div><div class="ms-value">${fmt(remaining)}</div></div>
-      <div class="ms-row"><div class="section-sub" style="color:rgba(255,255,255,0.7);">Use as semanas para acompanhar as compras de feira mensalmente.</div></div>
+      <div class="ms-row"><div class="section-sub" style="color:rgba(255,255,255,0.7);">Adicione uma linha para cada compra de feira que fizer no mês.</div></div>
     </div>`;
 }
 async function saveFairExpense(index, value){
@@ -3855,7 +3860,24 @@ async function saveFairExpense(index, value){
   const diff     = newValue - oldValue;
   entry.fairExpenses[index] = newValue;
   const feiraVault = getFeiraVault(true);
-  if(diff !== 0){ feiraVault.balance -= diff; await persistVaults(); }
+  if(diff !== 0){ feiraVault.balance = round2(feiraVault.balance - diff); await persistVaults(); }
+  await persistMonthData(); renderFeira(); renderAll();
+}
+async function addFairExpense(){
+  const entry = ensureMonthEntry(currentMonthKey);
+  entry.fairExpenses.push(0);
+  await persistMonthData(); renderFeira();
+}
+async function removeFairExpense(index){
+  const entry = ensureMonthEntry(currentMonthKey);
+  if(entry.fairExpenses.length <= 1) return;
+  const oldValue = parseFloat(entry.fairExpenses[index]) || 0;
+  entry.fairExpenses.splice(index, 1);
+  if(oldValue !== 0){
+    const feiraVault = getFeiraVault(true);
+    feiraVault.balance = round2(feiraVault.balance + oldValue);
+    await persistVaults();
+  }
   await persistMonthData(); renderFeira(); renderAll();
 }
 
@@ -4197,7 +4219,7 @@ async function unpayBill(billId){
     const amount      = Object.values(paidSplit).reduce((sum,v)=>sum+(v||0),0);
     const targetVault = vaults.find(x => x.id === bill.targetVaultId);
     if(targetVault){
-      targetVault.balance -= amount;
+      targetVault.balance = round2(targetVault.balance - amount);
       const txIndex = txns.findIndex(t => t.vaultId===targetVault.id && t.type==='deposito' && t.amount===amount && t.note===`Transf. Agendada: ${bill.name}`);
       if(txIndex !== -1) txns.splice(txIndex, 1);
       await persistVaults(); await persistTxns();
@@ -4229,7 +4251,7 @@ async function deleteBill(billId){
     const amount      = Object.values(paidSplit).reduce((sum,v)=>sum+(v||0),0);
     const targetVault = vaults.find(x => x.id === b.targetVaultId);
     if(targetVault){
-      targetVault.balance -= amount;
+      targetVault.balance = round2(targetVault.balance - amount);
       const txIndex = txns.findIndex(t => t.vaultId===targetVault.id && t.type==='deposito' && t.amount===amount && t.note===`Transf. Agendada: ${b.name}`);
       if(txIndex !== -1) txns.splice(txIndex, 1);
       await persistVaults(); await persistTxns();
@@ -4389,7 +4411,7 @@ async function confirmPayBill(billId, amount){
   if(b && b.targetVaultId){
     const v = vaults.find(x => x.id === b.targetVaultId);
     if(v){
-      v.balance += amount;
+      v.balance = round2(v.balance + amount);
       txns.push({ id: uid(), vaultId: v.id, type:'deposito', amount, note:`Transf. Agendada: ${b.name}`, who, ts: Date.now() });
       await persistVaults(); await persistTxns();
     }
@@ -4450,7 +4472,7 @@ async function autoDistributeLeftover(){
     let takeFis  = Math.min(fis, needed); fis -= takeFis;
     const taken  = takeCnt + takeFis;
     if(taken > 0){
-      v.balance += taken;
+      v.balance = round2(v.balance + taken);
       txns.push({ id: uid(), vaultId: v.id, type:'deposito', amount: taken, note:'Sobra distribuída para meta', who, ts: Date.now() });
       entry.vaultTransfers.conta  += takeCnt;
       entry.vaultTransfers.fisico += takeFis;
