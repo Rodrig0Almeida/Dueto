@@ -2042,7 +2042,7 @@ if (!window.storage) {
 // Exibida em Configurações → Desenvolvedor → "Dueto vX.X.X"
 // Formato: MAJOR.MINOR.PATCH  — ex: 2.1.0 → 2.1.1 (bugfix) ou 2.2.0 (feature)
 // ================================================================
-const APP_VERSION = '2.9.0';  // last updated: 2026-07-14 — added: despesa do tipo "enviar para pessoa" (cria carteira pessoal automática); fix: Estatísticas e Previsão agora respeitam o espaço/perfil ativo
+const APP_VERSION = '2.9.1';  // last updated: 2026-07-14 — fix: tela Mês (renda, saldos por fonte, sobra/falta) agora respeita o espaço/perfil ativo
 
 // Dev Mode — Force reload bypassing all browser cache so device gets latest version.
 // Shows current version before reloading so the user can see if it changed.
@@ -2168,11 +2168,20 @@ function inScope(ownerId){ const scope = currentScope(); return scope === 'casa'
 function visibleVaults(){ return vaults.filter(v => inScope(v.ownerId)); }
 function isLoanInScope(l){ const v = vaults.find(x=>x.id===l.vaultId); return v ? inScope(v.ownerId) : inScope(null); }
 function scopeLabel(scope){ if(scope === 'casa') return 'Casa'; return names[scope] || (scope === 'a' ? 'Pessoa A' : 'Pessoa B'); }
-function totalIncomeBySource(entry, source){ return (entry.income.a[source]||0) + (entry.income.b[source]||0); }
+function totalIncomeBySource(entry, source){
+  const scope = currentScope();
+  if(scope === 'casa') return (entry.income.a[source]||0) + (entry.income.b[source]||0);
+  return (entry.income[scope] && entry.income[scope][source]) || 0;
+}
 function spentBySource(entry, source){
   let total = 0;
-  Object.values(entry.billsPaid).forEach(split => { total += (split[source]||0); });
-  if(entry.vaultTransfers && entry.vaultTransfers[source]) total += entry.vaultTransfers[source];
+  Object.entries(entry.billsPaid).forEach(([billId, split]) => {
+    const bill = bills.find(b => b.id === billId);
+    const ownerId = bill ? bill.ownerId : null;
+    if(!inScope(ownerId)) return;
+    total += (split[source]||0);
+  });
+  if(currentScope() === 'casa' && entry.vaultTransfers && entry.vaultTransfers[source]) total += entry.vaultTransfers[source];
   return total;
 }
 function remainingBySource(entry, source){ return totalIncomeBySource(entry, source) - spentBySource(entry, source); }
@@ -3872,7 +3881,9 @@ function renderMonth(){
   const nameB    = names.b || 'Pessoa B';
   let totalIncome = 0, incomeHtml = '';
 
-  ['a','b'].forEach(p => {
+  const scope = currentScope();
+  const peopleToShow = scope === 'casa' ? ['a','b'] : [scope];
+  peopleToShow.forEach(p => {
     MONEY_SOURCES.forEach(src => {
       const val = entry.income[p][src.key] || 0;
       if(val > 0){
@@ -3908,10 +3919,14 @@ function renderMonth(){
 
 function openAddIncomeSheet(){
   const nameA = names.a || 'Pessoa A'; const nameB = names.b || 'Pessoa B';
+  const scope = currentScope();
+  const whoField = scope === 'casa'
+    ? `<select id="incWho"><option value="a">${nameA}</option><option value="b">${nameB}</option></select>`
+    : `<input type="hidden" id="incWho" value="${scope}" /><div class="section-sub" style="padding:10px 2px;">${scope==='a'?nameA:nameB} (perfil atual)</div>`;
   openSheet(`
     ${sheetHeader(`Adicionar Renda`)}
     <div class="sheet-sub">De quem é este dinheiro e onde ele está (físico ou em conta)?</div>
-    <div class="field"><label>De quem?</label><select id="incWho"><option value="a">${nameA}</option><option value="b">${nameB}</option></select></div>
+    <div class="field"><label>De quem?</label>${whoField}</div>
     <div class="field"><label>Onde?</label><select id="incSource"><option value="">Selecione</option>${MONEY_SOURCES.map(s=>`<option value="${s.key}">${s.emoji} ${s.label}</option>`).join('')}</select></div>
     <div class="field"><label>Valor recebido</label><div class="field-money"><input type="number" id="incAmount" placeholder="0,00" inputmode="decimal"></div></div>
     <button class="btn btn-primary" onclick="confirmAddIncome()">Salvar Renda</button>
@@ -4618,7 +4633,7 @@ function renderMonthSummary(entry, totalIncome){
     </div>`;
 
   const banner          = document.getElementById('leftoverBanner');
-  const vaultsWithGoals = vaults.filter(v => v.goal && v.balance < v.goal);
+  const vaultsWithGoals = visibleVaults().filter(v => v.goal && v.balance < v.goal);
 
   if(freeLeftover > 0 && totalIncome > 0){
     banner.style.display = 'block';
@@ -4634,7 +4649,7 @@ async function autoDistributeLeftover(){
   const entry         = ensureMonthEntry(currentMonthKey);
   let fis             = remainingBySource(entry, 'fisico');
   let cnt             = remainingBySource(entry, 'conta');
-  const vaultsToFund  = vaults.filter(v => v.goal && v.balance < v.goal);
+  const vaultsToFund  = visibleVaults().filter(v => v.goal && v.balance < v.goal);
   if(vaultsToFund.length === 0){ showToast("Nenhum cofre com meta pendente!"); return; }
 
   let distributedTotal = 0;
