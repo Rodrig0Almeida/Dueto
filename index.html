@@ -2042,7 +2042,7 @@ if (!window.storage) {
 // Exibida em Configurações → Desenvolvedor → "Dueto vX.X.X"
 // Formato: MAJOR.MINOR.PATCH  — ex: 2.1.0 → 2.1.1 (bugfix) ou 2.2.0 (feature)
 // ================================================================
-const APP_VERSION = '2.9.1';  // last updated: 2026-07-14 — fix: tela Mês (renda, saldos por fonte, sobra/falta) agora respeita o espaço/perfil ativo
+const APP_VERSION = '2.9.3';  // last updated: 2026-07-14 — fix: "quem pegou/pagou" empréstimo travado no perfil pessoal ativo, sem mais opção de escolher a outra pessoa
 
 // Dev Mode — Force reload bypassing all browser cache so device gets latest version.
 // Shows current version before reloading so the user can see if it changed.
@@ -2168,11 +2168,7 @@ function inScope(ownerId){ const scope = currentScope(); return scope === 'casa'
 function visibleVaults(){ return vaults.filter(v => inScope(v.ownerId)); }
 function isLoanInScope(l){ const v = vaults.find(x=>x.id===l.vaultId); return v ? inScope(v.ownerId) : inScope(null); }
 function scopeLabel(scope){ if(scope === 'casa') return 'Casa'; return names[scope] || (scope === 'a' ? 'Pessoa A' : 'Pessoa B'); }
-function totalIncomeBySource(entry, source){
-  const scope = currentScope();
-  if(scope === 'casa') return (entry.income.a[source]||0) + (entry.income.b[source]||0);
-  return (entry.income[scope] && entry.income[scope][source]) || 0;
-}
+function totalIncomeBySource(entry, source){ return (entry.income.a[source]||0) + (entry.income.b[source]||0); }
 function spentBySource(entry, source){
   let total = 0;
   Object.entries(entry.billsPaid).forEach(([billId, split]) => {
@@ -3296,7 +3292,7 @@ function renderStats(){
     <div class="stat-card"><div class="stat-card-label">Empréstimos em aberto</div><div class="stat-card-value">${fmt(openLoansTotal)}</div></div>
   </div>`;
 
-  if(monthKeys.length){
+  if(monthKeys.length && currentScope() === 'casa'){
     const incomeVals = monthKeys.map(k => { const e = ensureMonthEntry(k); return MONEY_SOURCES.reduce((s,src) => s + totalIncomeBySource(e, src.key), 0); });
     const spentVals   = monthKeys.map(k => { const e = ensureMonthEntry(k); return MONEY_SOURCES.reduce((s,src) => s + spentBySource(e, src.key), 0); });
     html += chartBoxWrap('Renda x Gastos', 'Comparativo dos últimos meses', groupedBarSVG(
@@ -3544,10 +3540,14 @@ function openLoanSheet(){
   const v     = vaults.find(x=>x.id===currentVaultId);
   const nameA = names.a || 'Pessoa A';
   const nameB = names.b || 'Pessoa B';
+  const scope = currentScope();
+  const whoField = scope === 'casa'
+    ? `<select id="loanWho"><option value="">Selecione</option><option value="a">${nameA}</option><option value="b">${nameB}</option></select>`
+    : `<input type="hidden" id="loanWho" value="${scope}" /><div class="section-sub" style="padding:10px 2px;">${scope==='a'?nameA:nameB} (perfil atual)</div>`;
   openSheet(`
     ${sheetHeader(`Pegar emprestado`)}
     <div class="sheet-sub">Tire um valor do cofre "${v.name}" combinando em quantas vezes vai devolver.</div>
-    <div class="field"><label>Quem está pegando?</label><select id="loanWho"><option value="">Selecione</option><option value="a">${nameA}</option><option value="b">${nameB}</option></select></div>
+    <div class="field"><label>Quem está pegando?</label>${whoField}</div>
     <div class="field"><label>Valor a pegar</label><div class="field-money"><input type="number" id="loanAmount" placeholder="0,00" inputmode="decimal" oninput="updateLoanPreview()" /></div></div>
     <div class="field">
       <label>Devolver em</label>
@@ -3756,10 +3756,14 @@ function openAdvancePaymentSheet(loanId){
     ${visibleVaults().filter(v=>v.id!==loan.vaultId).map(v=>`<option value="${v.id}">Outro cofre: ${escapeHtml(v.name)}</option>`).join('')}`;
   const helpText = autoReturn
     ? '<div class="field"><div class="section-sub">A meta deste cofre ainda não foi batida. O valor será devolvido a ele automaticamente.</div></div>' : '';
+  const scope = currentScope();
+  const whoField = scope === 'casa'
+    ? `<select id="advanceWho"><option value="">Selecione</option><option value="a">${nameA}</option><option value="b">${nameB}</option></select>`
+    : `<input type="hidden" id="advanceWho" value="${scope}" /><div class="section-sub" style="padding:10px 2px;">${scope==='a'?nameA:nameB} (perfil atual)</div>`;
   openSheet(`
     ${sheetHeader(`Adiantar pagamento`)}
     <div class="sheet-sub">Empréstimo "${escapeHtml(loan.note || 'sem nota')}" — restam <b>${fmt(loan.remaining)}</b>. Pague qualquer valor à frente das parcelas normais.</div>
-    <div class="field"><label>Quem está pagando?</label><select id="advanceWho"><option value="">Selecione</option><option value="a">${nameA}</option><option value="b">${nameB}</option></select></div>
+    <div class="field"><label>Quem está pagando?</label>${whoField}</div>
     <div class="field"><label>Valor a adiantar</label><div class="field-money"><input type="number" id="advanceAmount" placeholder="0,00" inputmode="decimal" /></div></div>
     ${helpText}
     ${autoReturn ? '' : `<div class="field"><label>Destino</label><select id="advanceDestination">${destinationOptions}</select></div>`}
@@ -3876,14 +3880,29 @@ function updateMonthHint(){
 function renderMonth(){
   document.getElementById('monthLabel').textContent = monthLabelFor(currentMonthKey);
   updateMonthHint();
-  const entry    = ensureMonthEntry(currentMonthKey);
+  const entry = ensureMonthEntry(currentMonthKey);
+  const scope = currentScope();
+
+  if(scope !== 'casa'){
+    // Espaço pessoal: a renda do casal fica só na Casa. Aqui só aparecem
+    // as despesas deste perfil, pagas diretamente dos cofres dele.
+    document.getElementById('noIncomeState').style.display = 'none';
+    document.getElementById('mainMonthContent').style.display = 'block';
+    document.getElementById('incomeSection').innerHTML = `
+      <div class="section-sub" style="padding:6px 2px 14px; line-height:1.5;">
+        A renda do casal fica só no espaço Casa. Para mandar dinheiro pra cá, crie em Casa uma despesa do tipo "Enviar para pessoa".
+      </div>`;
+    document.getElementById('sourceBalances').innerHTML = '';
+    renderBills(entry);
+    renderPersonalMonthSummary(entry);
+    return;
+  }
+
   const nameA    = names.a || 'Pessoa A';
   const nameB    = names.b || 'Pessoa B';
   let totalIncome = 0, incomeHtml = '';
 
-  const scope = currentScope();
-  const peopleToShow = scope === 'casa' ? ['a','b'] : [scope];
-  peopleToShow.forEach(p => {
+  ['a','b'].forEach(p => {
     MONEY_SOURCES.forEach(src => {
       const val = entry.income[p][src.key] || 0;
       if(val > 0){
@@ -4190,7 +4209,9 @@ function renderBills(entry){
     const sourceSummary = paid
       ? (b.payFromVaultId
           ? `devolvido para ${payToVaultName(b)}`
-          : Object.entries(paidSplit).filter(([k,v])=>v>0).map(([k,v])=>{ const src=MONEY_SOURCES.find(s=>s.key===k); return `${src.emoji} ${fmt(v)}`; }).join(' · '))
+          : paidSplit.personalVaultId
+            ? `pago do cofre ${escapeHtml((vaults.find(v=>v.id===paidSplit.personalVaultId)||{}).name || '?')}`
+            : Object.entries(paidSplit).filter(([k,v])=>v>0).map(([k,v])=>{ const src=MONEY_SOURCES.find(s=>s.key===k); return `${src.emoji} ${fmt(v)}`; }).join(' · '))
       : isHidden ? 'oculta neste mês' : (b.payFromVaultId ? 'toque para confirmar a devolução' : 'toque no valor para ajustar este mês');
     const targetVault = b.targetVaultId ? vaults.find(v=>v.id === b.targetVaultId) : null;
     const vaultBadge  = targetVault ? `<span class="bill-tag" style="background:var(--vault-light); color:#fff; font-size:9.5px;">🏦 p/ ${targetVault.name}</span>` : '';
@@ -4371,6 +4392,16 @@ async function unpayBill(billId){
       await persistVaults(); await persistTxns();
     }
   }
+  if(bill && paidSplit && paidSplit.personalVaultId){
+    const amount = billAmount(entry, bill);
+    const v = vaults.find(x => x.id === paidSplit.personalVaultId);
+    if(v){
+      v.balance = round2(v.balance + amount);
+      const txIndex = txns.findIndex(t => t.vaultId===v.id && t.type==='retirada' && t.amount===amount && t.note===`Despesa: ${bill.name}`);
+      if(txIndex !== -1) txns.splice(txIndex, 1);
+      await persistVaults(); await persistTxns();
+    }
+  }
   delete entry.billsPaid[billId];
   await persistMonthData(); renderMonth();
 }
@@ -4524,6 +4555,20 @@ function openPayBillSheet(billId){
   const b      = bills.find(x=>x.id===billId); if(!b) return;
   const entry  = ensureMonthEntry(currentMonthKey);
   const amount = billAmount(entry, b);
+
+  if(currentScope() !== 'casa'){
+    const myVaults = visibleVaults();
+    if(myVaults.length === 0){ showToast('Crie um cofre pessoal primeiro para poder pagar despesas.'); return; }
+    openSheet(`
+      ${sheetHeader(`Pagar ${escapeHtml(b.name)}`)}
+      <div class="sheet-sub">Valor: <b>${fmt(amount)}</b>. De qual dos seus cofres vai sair esse dinheiro?</div>
+      <div class="field"><label>Cofre</label><select id="payFromVault">${myVaults.map(v=>`<option value="${v.id}">${v.emoji||'🏦'} ${escapeHtml(v.name)} (${fmt(v.balance)})</option>`).join('')}</select></div>
+      <button class="btn btn-primary" onclick="confirmPayPersonalBill('${billId}')">Confirmar pagamento</button>
+      <button class="btn btn-ghost" onclick="closeSheet()">Cancelar</button>
+    `);
+    return;
+  }
+
   const sources   = ['conta','vale','fisico'];
   const available = sources.map(src => ({ key: src, balance: Math.max(0, remainingBySource(entry, src)) }));
   const suggestion = { conta:0, vale:0, fisico:0 };
@@ -4582,6 +4627,22 @@ async function confirmPayBill(billId, amount){
   }
   await persistMonthData(); closeSheet(); showToast('Conta paga'); renderMonth();
 }
+async function confirmPayPersonalBill(billId){
+  const entry  = ensureMonthEntry(currentMonthKey);
+  const b      = bills.find(x=>x.id===billId); if(!b) return;
+  const amount = billAmount(entry, b);
+  const vaultId = document.getElementById('payFromVault').value;
+  const v = vaults.find(x=>x.id===vaultId); if(!v) return;
+  if(amount > v.balance){ if(!confirm(`"${v.name}" vai ficar negativo com essa despesa. Continuar?`)) return; }
+
+  v.balance = round2(v.balance - amount);
+  await persistVaults();
+  txns.push({ id: uid(), vaultId: v.id, type:'retirada', amount, note:`Despesa: ${b.name}`, ts: Date.now() });
+  await persistTxns();
+
+  entry.billsPaid[billId] = { personalVaultId: v.id };
+  await persistMonthData(); closeSheet(); showToast('Conta paga'); renderMonth(); renderAll();
+}
 async function confirmPayVaultBill(billId){
   const entry = ensureMonthEntry(currentMonthKey);
   const b     = bills.find(x=>x.id===billId); if(!b) return;
@@ -4619,6 +4680,18 @@ function importPreviousMonthBills(){
   showToast('Despesas do mês anterior importadas.');
 }
 
+function renderPersonalMonthSummary(entry){
+  const visibleBills = bills.filter(b => !entry.hiddenBills[b.id] && isBillDueThisMonth(b));
+  const totalBills    = visibleBills.reduce((s,b)=> s + billAmount(entry, b), 0);
+  const myVaultsTotal = visibleVaults().reduce((s,v)=> s + Math.max(v.balance,0), 0);
+  document.getElementById('monthSummary').innerHTML = `
+    <div class="ms-row"><div class="ms-label">Despesas deste mês</div><div class="ms-value">− ${fmt(totalBills)}</div></div>
+    <div class="ms-row ms-final positive">
+      <div class="ms-label ms-final-label">👛 Guardado nos seus cofres</div>
+      <div class="ms-value">${fmt(myVaultsTotal)}</div>
+    </div>`;
+  document.getElementById('leftoverBanner').style.display = 'none';
+}
 function renderMonthSummary(entry, totalIncome){
   const visibleBills = bills.filter(b => !entry.hiddenBills[b.id] && isBillDueThisMonth(b));
   const totalBills   = visibleBills.reduce((s,b)=> s + billAmount(entry, b), 0);
