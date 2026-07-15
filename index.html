@@ -2042,7 +2042,7 @@ if (!window.storage) {
 // Exibida em Configurações → Desenvolvedor → "Dueto vX.X.X"
 // Formato: MAJOR.MINOR.PATCH  — ex: 2.1.0 → 2.1.1 (bugfix) ou 2.2.0 (feature)
 // ================================================================
-const APP_VERSION = '2.8.3';  // last updated: 2026-07-14 — fix: aba Feira visível só no espaço Casa, escondida nos perfis pessoais
+const APP_VERSION = '2.9.0';  // last updated: 2026-07-14 — added: despesa do tipo "enviar para pessoa" (cria carteira pessoal automática); fix: Estatísticas e Previsão agora respeitam o espaço/perfil ativo
 
 // Dev Mode — Force reload bypassing all browser cache so device gets latest version.
 // Shows current version before reloading so the user can see if it changed.
@@ -2166,6 +2166,7 @@ function payToVaultName(b){ const v = vaults.find(x=>x.id===b.payToVaultId); ret
 function currentScope(){ return localSettings.currentProfile || 'casa'; }
 function inScope(ownerId){ const scope = currentScope(); return scope === 'casa' ? !ownerId : ownerId === scope; }
 function visibleVaults(){ return vaults.filter(v => inScope(v.ownerId)); }
+function isLoanInScope(l){ const v = vaults.find(x=>x.id===l.vaultId); return v ? inScope(v.ownerId) : inScope(null); }
 function scopeLabel(scope){ if(scope === 'casa') return 'Casa'; return names[scope] || (scope === 'a' ? 'Pessoa A' : 'Pessoa B'); }
 function totalIncomeBySource(entry, source){ return (entry.income.a[source]||0) + (entry.income.b[source]||0); }
 function spentBySource(entry, source){
@@ -2592,7 +2593,7 @@ function renderProfileSwitcher(){
 function renderAll(){
   const scopedVaults = visibleVaults();
   const totalGuardado = scopedVaults.filter(v => !isTemporaryVault(v)).reduce((s,v)=> s + Math.max(v.balance,0), 0);
-  const totalDevido   = loans.reduce((s,l)=> s + l.remaining, 0);
+  const totalDevido   = loans.filter(isLoanInScope).reduce((s,l)=> s + l.remaining, 0);
   document.getElementById('totalGuardado').textContent = fmt(totalGuardado);
   document.getElementById('totalDevido').textContent   = fmt(totalDevido);
 
@@ -3271,14 +3272,15 @@ function renderStats(){
   const box = document.getElementById('statsContent');
   if(!box) return;
   const monthKeys = lastNMonthKeys(6);
-  if(vaults.length === 0 && monthKeys.length === 0 && loans.length === 0){
+  const scopedVaults = visibleVaults();
+  if(scopedVaults.length === 0 && monthKeys.length === 0 && loans.length === 0){
     box.innerHTML = '<div class="stats-empty">Ainda não há dados suficientes para mostrar estatísticas. Use o app por um tempo e volte aqui 📊</div>';
     return;
   }
 
-  const totalSaved      = vaults.reduce((s,v) => s + (v.balance||0), 0);
-  const openLoansTotal  = loans.filter(l => l.remaining > 0).reduce((s,l) => s + l.remaining, 0);
-  const totalPaidLoans  = loans.reduce((s,l) => s + (l.total - l.remaining), 0);
+  const totalSaved      = scopedVaults.reduce((s,v) => s + (v.balance||0), 0);
+  const openLoansTotal  = loans.filter(l => l.remaining > 0 && isLoanInScope(l)).reduce((s,l) => s + l.remaining, 0);
+  const totalPaidLoans  = loans.filter(isLoanInScope).reduce((s,l) => s + (l.total - l.remaining), 0);
 
   let html = `<div class="stat-cards">
     <div class="stat-card"><div class="stat-card-label">Guardado nos cofres</div><div class="stat-card-value">${fmt(totalSaved)}</div></div>
@@ -3297,9 +3299,9 @@ function renderStats(){
     ));
   }
 
-  if(vaults.length){
+  if(scopedVaults.length){
     html += chartBoxWrap('Saldo dos cofres', 'Quanto cada cofre tem guardado hoje', horizontalBarsHTML(
-      vaults.map(v => ({ label: `${v.emoji||'🏦'} ${v.name}`, value: v.balance||0, color:'#3E6650' }))
+      scopedVaults.map(v => ({ label: `${v.emoji||'🏦'} ${v.name}`, value: v.balance||0, color:'#3E6650' }))
     ));
   }
 
@@ -3604,7 +3606,7 @@ function openPayInstallment(loanId){
   const destinationOptions = autoReturn ? '' : `
     <option value="${loan.vaultId}">Voltar para ${sourceVault ? escapeHtml(sourceVault.name) : 'este cofre'}</option>
     <option value="conta">Conta principal</option>
-    ${vaults.filter(v=>v.id!==loan.vaultId).map(v=>`<option value="${v.id}">Outro cofre: ${escapeHtml(v.name)}</option>`).join('')}`;
+    ${visibleVaults().filter(v=>v.id!==loan.vaultId).map(v=>`<option value="${v.id}">Outro cofre: ${escapeHtml(v.name)}</option>`).join('')}`;
   const helpText = autoReturn
     ? '<div class="field"><div class="section-sub">A meta deste cofre ainda não foi batida. O valor será devolvido a ele automaticamente.</div></div>' : '';
   openSheet(`
@@ -3619,7 +3621,7 @@ function openPayInstallment(loanId){
   `);
 }
 function openMultiPaySheet(who){
-  const openLoans = loans.filter(l => l.remaining > 0 && (!who || l.who === who));
+  const openLoans = loans.filter(l => l.remaining > 0 && (!who || l.who === who) && isLoanInScope(l));
   if(openLoans.length === 0){ showToast('Nenhum empréstimo em aberto.'); return; }
   const loanItems = openLoans.map(l => {
     const loanTitle = escapeHtml(l.note || 'Empréstimo');
@@ -3742,7 +3744,7 @@ function openAdvancePaymentSheet(loanId){
   const destinationOptions = autoReturn ? '' : `
     <option value="${loan.vaultId}">Voltar para ${sourceVault ? escapeHtml(sourceVault.name) : 'este cofre'}</option>
     <option value="conta">Conta principal</option>
-    ${vaults.filter(v=>v.id!==loan.vaultId).map(v=>`<option value="${v.id}">Outro cofre: ${escapeHtml(v.name)}</option>`).join('')}`;
+    ${visibleVaults().filter(v=>v.id!==loan.vaultId).map(v=>`<option value="${v.id}">Outro cofre: ${escapeHtml(v.name)}</option>`).join('')}`;
   const helpText = autoReturn
     ? '<div class="field"><div class="section-sub">A meta deste cofre ainda não foi batida. O valor será devolvido a ele automaticamente.</div></div>' : '';
   openSheet(`
@@ -3992,7 +3994,7 @@ async function removeFairExpense(index){
 }
 
 function renderLoans(){
-  const openLoans = loans.filter(l => l.remaining > 0);
+  const openLoans = loans.filter(l => l.remaining > 0 && isLoanInScope(l));
   const box = document.getElementById('loansList');
 
   if(openLoans.length === 0){
@@ -4413,6 +4415,9 @@ function openNewBillSheet(){
       <select id="billTargetVault">
         <option value="">Nenhum (Despesa comum externa)</option>
         ${visibleVaults().map(v => `<option value="${v.id}">Cofre: ${v.name}</option>`).join('')}
+        ${currentScope()==='casa' ? `
+        <option value="person:a">👤 Enviar para ${escapeHtml(names.a||'Pessoa A')} (pessoal)</option>
+        <option value="person:b">👤 Enviar para ${escapeHtml(names.b||'Pessoa B')} (pessoal)</option>` : ''}
       </select>
     </div>
     <div class="field">
@@ -4433,12 +4438,26 @@ function pickBillKind(k){
   document.querySelectorAll('#billKindSeg .seg-opt').forEach(el => el.classList.toggle('active', el.dataset.k === k));
   document.getElementById('billAmountLabel').textContent = k === 'fixa' ? 'Valor (repete todo mês)' : 'Valor estimado para este mês';
 }
+async function getOrCreatePersonalVault(person){
+  let v = vaults.find(x => x.ownerId === person && x.isPersonalDefault);
+  if(v) return v;
+  const label = names[person] || (person === 'a' ? 'Pessoa A' : 'Pessoa B');
+  v = { id: uid(), name: `Carteira de ${label}`, emoji: '👛', balance: 0, goal: null, createdAt: Date.now(), ownerId: person, isPersonalDefault: true };
+  vaults.push(v); await persistVaults();
+  return v;
+}
 async function createBill(){
-  const name          = document.getElementById('newBillName').value.trim();
-  const amount        = parseFloat(document.getElementById('newBillAmount').value) || 0;
-  const targetVaultId = document.getElementById('billTargetVault').value || null;
-  const kind          = window._pendingBillKind || 'fixa';
+  const name        = document.getElementById('newBillName').value.trim();
+  const amount      = parseFloat(document.getElementById('newBillAmount').value) || 0;
+  const targetValue = document.getElementById('billTargetVault').value || null;
+  const kind        = window._pendingBillKind || 'fixa';
   if(!name){ showToast('Dê um nome à conta'); return; }
+  let targetVaultId = targetValue;
+  if(targetValue && targetValue.startsWith('person:')){
+    const person = targetValue.split(':')[1];
+    const personalVault = await getOrCreatePersonalVault(person);
+    targetVaultId = personalVault.id;
+  }
   const ownerId = currentScope() === 'casa' ? null : currentScope();
   bills.push({ id: uid(), name, defaultAmount: amount, kind, targetVaultId, createdMonthKey: currentMonthKey, ownerId });
   await persistBills(); closeSheet(); showToast('Adicionado com sucesso'); renderMonth();
@@ -4674,7 +4693,7 @@ function renderForecast(){
   const totalBillsAmt = visibleBills.reduce((s,b) => s + billAmount(currentEntry, b), 0);
 
   // Open loans monthly installment total
-  const openLoans = loans.filter(l => l.remaining > 0);
+  const openLoans = loans.filter(l => l.remaining > 0 && isLoanInScope(l));
   const totalLoanInstall = openLoans.reduce((s,l) => {
     const remaining = l.installments - l.paidInstallments;
     if(remaining <= 0) return s;
@@ -4682,14 +4701,15 @@ function renderForecast(){
   }, 0);
 
   // Vault allocations default from current vaultTransfers
+  const scopedVaults = visibleVaults();
   const defaultVaultAlloc = {};
-  vaults.forEach(v => { defaultVaultAlloc[v.id] = p.vaultAllocations?.[v.id] ?? 0; });
+  scopedVaults.forEach(v => { defaultVaultAlloc[v.id] = p.vaultAllocations?.[v.id] ?? 0; });
 
   const nameA = names.a || 'Pessoa A';
   const nameB = names.b || 'Pessoa B';
   const months = p.months || 6;
 
-  const vaultAllocRows = vaults.filter(v => !isTemporaryVault(v)).map(v => `
+  const vaultAllocRows = scopedVaults.filter(v => !isTemporaryVault(v)).map(v => `
     <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);">
       <div style="width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--vault-light),var(--vault));display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;">${v.emoji||'🏦'}</div>
       <div style="flex:1;min-width:0;">
@@ -4914,14 +4934,14 @@ function buildForecastResult(){
   const visibleBills  = bills.filter(b => (!b.createdMonthKey || b.createdMonthKey <= currentMonthKey) && isBillDueThisMonth(b));
   const totalBillsAmt = visibleBills.reduce((s,b) => s + billAmount(currentEntry, b), 0);
 
-  const openLoans = loans.filter(l => l.remaining > 0);
+  const openLoans = loans.filter(l => l.remaining > 0 && isLoanInScope(l));
   // Per-loan monthly installment and remaining months
   const loanSchedule = openLoans.map(l => {
     const remain = l.installments - l.paidInstallments;
     return { ...l, remainMonths: remain, installAmt: remain > 0 ? l.remaining / remain : 0 };
   });
 
-  const totalVaultAlloc = vaults.filter(v=>!isTemporaryVault(v))
+  const totalVaultAlloc = scopedVaults.filter(v=>!isTemporaryVault(v))
     .reduce((s,v) => s + (p.vaultAllocations?.[v.id]||0), 0);
 
   const extraTotal = (p.extraExpenses||[]).reduce((s,e)=>s+(e.amount||0),0);
@@ -4938,7 +4958,7 @@ function buildForecastResult(){
 
   // Project month by month
   let vaultBalances = {};
-  vaults.filter(v=>!isTemporaryVault(v)).forEach(v => { vaultBalances[v.id] = v.balance; });
+  scopedVaults.filter(v=>!isTemporaryVault(v)).forEach(v => { vaultBalances[v.id] = v.balance; });
 
   const monthlyData = monthLabels.map((lbl, mi) => {
     // Loans still active this month
@@ -4949,7 +4969,7 @@ function buildForecastResult(){
 
     // Update vault balances
     const snap = {};
-    vaults.filter(v=>!isTemporaryVault(v)).forEach(v => {
+    scopedVaults.filter(v=>!isTemporaryVault(v)).forEach(v => {
       vaultBalances[v.id] = (vaultBalances[v.id]||0) + (p.vaultAllocations?.[v.id]||0);
       snap[v.id] = vaultBalances[v.id];
     });
@@ -4965,7 +4985,7 @@ function buildForecastResult(){
   const scoreEmoji = score >= 25 ? '💚' : score >= 10 ? '⚠️' : '🔴';
 
   // Vault goal projections
-  const vaultProjections = vaults.filter(v=>!isTemporaryVault(v) && (p.vaultAllocations?.[v.id]||0) > 0).map(v => {
+  const vaultProjections = scopedVaults.filter(v=>!isTemporaryVault(v) && (p.vaultAllocations?.[v.id]||0) > 0).map(v => {
     const monthlyAdd = p.vaultAllocations?.[v.id] || 0;
     const finalBal   = monthlyData[months-1]?.vaultSnap[v.id] ?? v.balance;
     const goal       = v.goal || 0;
