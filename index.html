@@ -2042,7 +2042,7 @@ if (!window.storage) {
 // Exibida em Configurações → Desenvolvedor → "Dueto vX.X.X"
 // Formato: MAJOR.MINOR.PATCH  — ex: 2.1.0 → 2.1.1 (bugfix) ou 2.2.0 (feature)
 // ================================================================
-const APP_VERSION = '2.9.4';  // last updated: 2026-07-14 — fix: histórico de empréstimos (aba Empréstimos) agora respeita o espaço/perfil ativo
+const APP_VERSION = '2.9.5';  // last updated: 2026-07-14 — fix: perfil pessoal agora vê seus próprios empréstimos ativos mesmo quando tirados de um cofre da Casa; travado o último seletor "quem paga" que faltava
 
 // Dev Mode — Force reload bypassing all browser cache so device gets latest version.
 // Shows current version before reloading so the user can see if it changed.
@@ -2166,7 +2166,12 @@ function payToVaultName(b){ const v = vaults.find(x=>x.id===b.payToVaultId); ret
 function currentScope(){ return localSettings.currentProfile || 'casa'; }
 function inScope(ownerId){ const scope = currentScope(); return scope === 'casa' ? !ownerId : ownerId === scope; }
 function visibleVaults(){ return vaults.filter(v => inScope(v.ownerId)); }
-function isLoanInScope(l){ const v = vaults.find(x=>x.id===l.vaultId); return v ? inScope(v.ownerId) : inScope(null); }
+function isLoanInScope(l){
+  const scope = currentScope();
+  if(scope !== 'casa' && l.who === scope) return true;
+  const v = vaults.find(x=>x.id===l.vaultId);
+  return v ? inScope(v.ownerId) : inScope(null);
+}
 function scopeLabel(scope){ if(scope === 'casa') return 'Casa'; return names[scope] || (scope === 'a' ? 'Pessoa A' : 'Pessoa B'); }
 function totalIncomeBySource(entry, source){ return (entry.income.a[source]||0) + (entry.income.b[source]||0); }
 function spentBySource(entry, source){
@@ -3612,6 +3617,10 @@ function openPayInstallment(loanId){
   const sourceVault = vaults.find(v=>v.id===loan.vaultId);
   const autoReturn  = sourceVault && sourceVault.goal && sourceVault.balance < sourceVault.goal;
   const nameA = names.a || 'Pessoa A'; const nameB = names.b || 'Pessoa B';
+  const scope = currentScope();
+  const payWhoField = scope === 'casa'
+    ? `<select id="paymentWho"><option value="">Selecione</option><option value="a">${nameA}</option><option value="b">${nameB}</option></select>`
+    : `<input type="hidden" id="paymentWho" value="${scope}" /><div class="section-sub" style="padding:10px 2px;">${scope==='a'?nameA:nameB} (perfil atual)</div>`;
   const destinationOptions = autoReturn ? '' : `
     <option value="${loan.vaultId}">Voltar para ${sourceVault ? escapeHtml(sourceVault.name) : 'este cofre'}</option>
     <option value="conta">Conta principal</option>
@@ -3621,7 +3630,7 @@ function openPayInstallment(loanId){
   openSheet(`
     ${sheetHeader(`Pagar parcela`)}
     <div class="sheet-sub">Parcela ${loan.paidInstallments+1} de ${loan.installments} do empréstimo "${escapeHtml(loan.note||'sem nota')}".</div>
-    <div class="field"><label>Quem está pagando?</label><select id="paymentWho"><option value="">Selecione</option><option value="a">${nameA}</option><option value="b">${nameB}</option></select></div>
+    <div class="field"><label>Quem está pagando?</label>${payWhoField}</div>
     <div class="field"><label>Valor da parcela</label><div class="field-money"><input type="number" id="payAmount" value="${payAmount.toFixed(2)}" inputmode="decimal" /></div></div>
     ${helpText}
     ${autoReturn ? '' : `<div class="field"><label>Destino</label><select id="loanDestination">${destinationOptions}</select></div>`}
@@ -4090,7 +4099,16 @@ function renderLoans(){
   }
 
   const scopedVaultIds = new Set(visibleVaults().map(v=>v.id));
-  const history = [...txns].filter(t => (t.type === 'emprestimo' || t.type === 'pagamento') && scopedVaultIds.has(t.vaultId)).sort((a,b)=>b.ts-a.ts);
+  const scope = currentScope();
+  const history = [...txns].filter(t => {
+    if(t.type !== 'emprestimo' && t.type !== 'pagamento') return false;
+    if(scopedVaultIds.has(t.vaultId)) return true;
+    if(scope !== 'casa'){
+      const loan = loans.find(l => l.id === t.loanId);
+      if(loan && loan.who === scope) return true;
+    }
+    return false;
+  }).sort((a,b)=>b.ts-a.ts);
   document.getElementById('loanHistory').innerHTML = history.length === 0
     ? '<div class="empty-note">Nenhum movimento de empréstimo ainda.</div>'
     : history.map(t => activityRowHtml(t)).join('');
