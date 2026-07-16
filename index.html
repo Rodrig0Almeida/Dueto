@@ -2042,7 +2042,7 @@ if (!window.storage) {
 // Exibida em Configurações → Desenvolvedor → "Dueto vX.X.X"
 // Formato: MAJOR.MINOR.PATCH  — ex: 2.1.0 → 2.1.1 (bugfix) ou 2.2.0 (feature)
 // ================================================================
-const APP_VERSION = '2.9.3';  // last updated: 2026-07-14 — fix: "quem pegou/pagou" empréstimo travado no perfil pessoal ativo, sem mais opção de escolher a outra pessoa
+const APP_VERSION = '2.9.4';  // last updated: 2026-07-14 — fix: histórico de empréstimos (aba Empréstimos) agora respeita o espaço/perfil ativo
 
 // Dev Mode — Force reload bypassing all browser cache so device gets latest version.
 // Shows current version before reloading so the user can see if it changed.
@@ -4089,7 +4089,8 @@ function renderLoans(){
     }).join('');
   }
 
-  const history = [...txns].filter(t => t.type === 'emprestimo' || t.type === 'pagamento').sort((a,b)=>b.ts-a.ts);
+  const scopedVaultIds = new Set(visibleVaults().map(v=>v.id));
+  const history = [...txns].filter(t => (t.type === 'emprestimo' || t.type === 'pagamento') && scopedVaultIds.has(t.vaultId)).sort((a,b)=>b.ts-a.ts);
   document.getElementById('loanHistory').innerHTML = history.length === 0
     ? '<div class="empty-note">Nenhum movimento de empréstimo ainda.</div>'
     : history.map(t => activityRowHtml(t)).join('');
