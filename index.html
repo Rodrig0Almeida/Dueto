@@ -820,6 +820,22 @@ body {
 .action-btn:active { background: var(--cream-2); }
 .action-btn .ic { font-size: 19px; }
 
+.menu-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+.menu-item {
+  display: flex; align-items: center; gap: 14px;
+  background: var(--cream-2);
+  border-radius: var(--r-lg);
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.menu-item:active { background: var(--line); }
+.menu-item .ic { font-size: 20px; }
+.menu-item-title { font-weight: 600; font-size: var(--text-sm); color: var(--ink); }
+.menu-item-sub { font-size: 11.5px; color: var(--text-faint); margin-top: 2px; }
+body.dark .menu-item { background: rgba(255,255,255,0.06); }
+body.dark .menu-item:active { background: rgba(255,255,255,0.1); }
+
 /* ================================================================
    LOANS BOX & ROWS
    ================================================================ */
@@ -1661,9 +1677,7 @@ body.dark .loan-progress-bg { background: rgba(255,255,255,0.14); }
       <div class="action-btn" onclick="openMoveSheet('deposito')"><span class="ic">⬇️</span>Guardar</div>
       <div class="action-btn" onclick="openMoveSheet('retirada')"><span class="ic">⬆️</span>Retirar</div>
       <div class="action-btn" onclick="openTransferSheet()"><span class="ic">🔁</span>Enviar</div>
-      <div class="action-btn" onclick="openMoveSheet('emprestimo')"><span class="ic">🤝</span>Emprestar</div>
-      <div class="action-btn" onclick="openVaultLoanSheet()"><span class="ic">🏦</span>Emprestar a cofre</div>
-      <div class="action-btn" onclick="openEditVaultSheet(currentVaultId)"><span class="ic">✏️</span>Editar</div>
+      <div class="action-btn" onclick="openVaultMoreActions()"><span class="ic">⋯</span>Mais</div>
     </div>
 
     <div id="loansSection">
@@ -2042,7 +2056,7 @@ if (!window.storage) {
 // Exibida em Configurações → Desenvolvedor → "Dueto vX.X.X"
 // Formato: MAJOR.MINOR.PATCH  — ex: 2.1.0 → 2.1.1 (bugfix) ou 2.2.0 (feature)
 // ================================================================
-const APP_VERSION = '2.9.5';  // last updated: 2026-07-14 — fix: perfil pessoal agora vê seus próprios empréstimos ativos mesmo quando tirados de um cofre da Casa; travado o último seletor "quem paga" que faltava
+const APP_VERSION = '2.9.7';  // last updated: 2026-07-14 — fix: botões do cofre agrupados (Guardar/Retirar/Enviar/Mais); removida variável "who" morta; campo "destino" escondido onde não tem efeito
 
 // Dev Mode — Force reload bypassing all browser cache so device gets latest version.
 // Shows current version before reloading so the user can see if it changed.
@@ -2088,7 +2102,6 @@ async function devCheckForUpdate(){
 let vaults = [];          // {id, name, emoji, balance, goal, createdAt}
 let txns = [];            // {id, vaultId, type, amount, note, who, ts, loanId?}
 let loans = [];           // {id, vaultId, total, remaining, installments, paidInstallments, startMonthKey, who, note, ts}
-let who = null;           // 'a' | 'b'
 let names = { a: '', b: '' };
 let currentVaultId = null;
 let pendingEmoji = '🏦';
@@ -2197,10 +2210,9 @@ function uid(){ return Math.random().toString(36).slice(2,10) + Date.now().toStr
 // STORAGE
 // ---------------------------------------------------------------
 
-// "who" and "syncUrl" are device-local-only settings: they are never
-// part of the cloud payload and never trigger a cloud push.
+// "syncUrl" is a device-local-only setting: it's never
+// part of the cloud payload and never triggers a cloud push.
 async function loadLocalOnlySettings(){
-  try{ const w  = await window.storage.get('who');     who     = w  ? JSON.parse(w.value) : null; }catch(e){ who = null; }
   try{ const su = await window.storage.get('syncUrl'); syncUrl = su ? (su.value || '')    : '';   }catch(e){ syncUrl = ''; }
   // localSettings — appearance prefs, device-only, never synced to cloud
   let hadLocalSettings = false;
@@ -2242,7 +2254,6 @@ function applyCloudData(data){
   // appSettings from cloud: only take shared fields (extraProfiles), never appearance/showStats
   const cloudApp = (data.appSettings && typeof data.appSettings === 'object') ? data.appSettings : {};
   appSettings = { extraProfiles: [], ...cloudApp };
-  // "who" is intentionally left untouched: it's a per-device setting, not synced.
 }
 
 // Writes the synced state to localStorage WITHOUT scheduling a new cloud push
@@ -2334,7 +2345,6 @@ async function persistVaults()    { await safeSet('vaults',    vaults);    }
 async function persistTxns()      { await safeSet('txns',      txns);      }
 async function persistLoans()     { await safeSet('loans',     loans);     }
 async function persistNames()     { await safeSet('names',     names);     }
-async function persistWho()       { await safeSet('who',       who);       }
 async function persistBills()     { await safeSet('bills',     bills);     }
 async function persistMonthData() { await safeSet('monthData', monthData); }
 async function persistAppSettings() { await safeSet('appSettings', appSettings); }
@@ -2350,7 +2360,7 @@ async function safeSet(key, value){
     if(SYNC_KEYS.includes(key)){
       scheduleCloudPush();
     } else {
-      // local-only key (e.g. "who"): just reflect current resting status
+      // local-only key (e.g. "syncUrl"): just reflect current resting status
       setSyncStatus(syncUrl ? 'synced' : 'nolink');
     }
     return true;
@@ -3425,6 +3435,18 @@ async function confirmMove(type){
   closeSheet(); showToast(type==='deposito' ? 'Guardado!' : 'Retirado.'); renderDetail(); renderAll();
 }
 
+function openVaultMoreActions(){
+  const v = vaults.find(x=>x.id===currentVaultId); if(!v) return;
+  openSheet(`
+    ${sheetHeader(`Mais ações — ${escapeHtml(v.name)}`)}
+    <div class="menu-list">
+      <div class="menu-item" onclick="closeSheet(); openMoveSheet('emprestimo')"><span class="ic">🤝</span><div><div class="menu-item-title">Emprestar a pessoa</div><div class="menu-item-sub">Alguém pega dinheiro emprestado deste cofre</div></div></div>
+      <div class="menu-item" onclick="closeSheet(); openVaultLoanSheet()"><span class="ic">🏦</span><div><div class="menu-item-title">Emprestar a outro cofre</div><div class="menu-item-sub">Move para outro cofre, com devolução automática no mês seguinte</div></div></div>
+      <div class="menu-item" onclick="closeSheet(); openEditVaultSheet(currentVaultId)"><span class="ic">✏️</span><div><div class="menu-item-title">Editar cofre</div><div class="menu-item-sub">Nome, símbolo e meta</div></div></div>
+    </div>
+    <button class="btn btn-ghost" onclick="closeSheet()">Fechar</button>
+  `);
+}
 function openTransferSheet(){
   const v = vaults.find(x=>x.id===currentVaultId); if(!v) return;
   const targetOptions = [
@@ -3495,13 +3517,19 @@ async function confirmTransfer(){
 // ==========================================
 function openVaultLoanSheet(){
   const v = vaults.find(x=>x.id===currentVaultId); if(!v) return;
-  const otherVaults = visibleVaults().filter(x => x.id !== v.id);
+  const sameScope  = visibleVaults().filter(x => x.id !== v.id);
+  const casaVaults = currentScope() !== 'casa' ? vaults.filter(x => !x.ownerId) : [];
+  const otherVaults = [...sameScope, ...casaVaults];
   if(otherVaults.length === 0){ showToast('Crie outro cofre para poder emprestar entre cofres.'); return; }
   const nextLabel = monthLabelFor(nextMonthKey(currentMonthKey));
+  const optionsHtml = currentScope() === 'casa'
+    ? otherVaults.map(x=>`<option value="${x.id}">${escapeHtml(x.name)}</option>`).join('')
+    : `${sameScope.length ? `<optgroup label="Seus cofres">${sameScope.map(x=>`<option value="${x.id}">${escapeHtml(x.name)}</option>`).join('')}</optgroup>` : ''}
+       ${casaVaults.length ? `<optgroup label="Casa">${casaVaults.map(x=>`<option value="${x.id}">🏠 ${escapeHtml(x.name)}</option>`).join('')}</optgroup>` : ''}`;
   openSheet(`
     ${sheetHeader(`Emprestar a outro cofre`)}
     <div class="sheet-sub">Tire um valor do cofre "${escapeHtml(v.name)}" e empreste a outro cofre. A devolução vira uma despesa automática em ${nextLabel}.</div>
-    <div class="field"><label>Cofre que vai receber</label><select id="vaultLoanDest"><option value="">Selecione</option>${otherVaults.map(x=>`<option value="${x.id}">${escapeHtml(x.name)}</option>`).join('')}</select></div>
+    <div class="field"><label>Cofre que vai receber</label><select id="vaultLoanDest"><option value="">Selecione</option>${optionsHtml}</select></div>
     <div class="field"><label>Valor</label><div class="field-money"><input type="number" id="vaultLoanAmount" placeholder="0,00" inputmode="decimal" /></div></div>
     <div class="field"><label>Nota (opcional)</label><input type="text" id="vaultLoanNote" placeholder="ex: cobrir feira do mês" maxlength="60" /></div>
     <div class="section-sub" style="margin:4px 2px 0;">Em ${nextLabel}, o cofre que recebeu vai aparecer com uma despesa "Devolver empréstimo" no valor emprestado, a pagar de volta para "${escapeHtml(v.name)}".</div>
@@ -4535,17 +4563,25 @@ function openEditBillSheet(billId){
   pendingEmoji = b.emoji || '';
   window._pendingBillEditId = billId;
   window._pendingBillKind = b.kind || 'fixa';
-  openSheet(`
-    ${sheetHeader(`Editar despesa`)}
-    <div class="sheet-sub">Altere os dados desta conta ou despesa.</div>
-    <div class="field"><label>Nome da despesa</label><input type="text" id="editBillName" value="${escapeHtml(b.name)}" maxlength="30" /></div>
+  const isVaultLoanBill = !!b.payFromVaultId;
+  const isPersonalBill  = !!b.ownerId;
+  const targetField = (isVaultLoanBill || isPersonalBill) ? '' : `
     <div class="field">
       <label>Destino do dinheiro (opcional)</label>
       <select id="editBillTargetVault">
         <option value="" ${!b.targetVaultId?'selected':''}>Nenhum (Despesa comum externa)</option>
         ${vaults.map(v => `<option value="${v.id}" ${b.targetVaultId===v.id?'selected':''}>Cofre: ${escapeHtml(v.name)}</option>`).join('')}
       </select>
-    </div>
+    </div>`;
+  const noteText = isVaultLoanBill
+    ? '<div class="section-sub" style="margin:-4px 2px 14px;">Esta é a devolução de um empréstimo entre cofres — o pagamento sempre volta para o cofre de origem, não dá pra escolher outro destino aqui.</div>'
+    : (isPersonalBill ? '<div class="section-sub" style="margin:-4px 2px 14px;">Despesa pessoal — ao pagar, você escolhe de qual dos seus cofres vai sair o dinheiro.</div>' : '');
+  openSheet(`
+    ${sheetHeader(`Editar despesa`)}
+    <div class="sheet-sub">Altere os dados desta conta ou despesa.</div>
+    <div class="field"><label>Nome da despesa</label><input type="text" id="editBillName" value="${escapeHtml(b.name)}" maxlength="30" /></div>
+    ${targetField}
+    ${noteText}
     <div class="field">
       <label>Tipo</label>
       <div class="seg" id="editBillKindSeg">
@@ -4565,7 +4601,8 @@ async function saveEditBill(){
   if(!name){ showToast('Dê um nome à conta'); return; }
   b.name          = name;
   b.defaultAmount = parseFloat(document.getElementById('editBillAmount').value) || 0;
-  b.targetVaultId = document.getElementById('editBillTargetVault').value || null;
+  const targetEl = document.getElementById('editBillTargetVault');
+  if(targetEl) b.targetVaultId = targetEl.value || null;
   b.kind          = window._pendingBillKind || b.kind;
   await persistBills(); closeSheet(); showToast('Despesa atualizada'); renderMonth();
 }
@@ -4640,7 +4677,7 @@ async function confirmPayBill(billId, amount){
     const v = vaults.find(x => x.id === b.targetVaultId);
     if(v){
       v.balance = round2(v.balance + amount);
-      txns.push({ id: uid(), vaultId: v.id, type:'deposito', amount, note:`Transf. Agendada: ${b.name}`, who, ts: Date.now() });
+      txns.push({ id: uid(), vaultId: v.id, type:'deposito', amount, note:`Transf. Agendada: ${b.name}`, who: null, ts: Date.now() });
       await persistVaults(); await persistTxns();
     }
   }
@@ -4752,7 +4789,7 @@ async function autoDistributeLeftover(){
     const taken  = takeCnt + takeFis;
     if(taken > 0){
       v.balance = round2(v.balance + taken);
-      txns.push({ id: uid(), vaultId: v.id, type:'deposito', amount: taken, note:'Sobra distribuída para meta', who, ts: Date.now() });
+      txns.push({ id: uid(), vaultId: v.id, type:'deposito', amount: taken, note:'Sobra distribuída para meta', who: null, ts: Date.now() });
       entry.vaultTransfers.conta  += takeCnt;
       entry.vaultTransfers.fisico += takeFis;
       distributedTotal += taken;
