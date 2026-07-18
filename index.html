@@ -1842,7 +1842,7 @@ body.dark .loan-progress-bg { background: rgba(255,255,255,0.14); }
     <!-- ESPAÇO ATIVO -->
     <div class="section-head" style="margin-top:20px;"><div class="section-title">Ver cofres e contas de</div></div>
     <div class="profile-switcher-slot"></div>
-    <div class="section-sub" style="margin:-8px 2px 0; font-size:11px; line-height:1.5;">
+    <div class="section-sub" id="profileSwitcherHint" style="margin:-8px 2px 0; font-size:11px; line-height:1.5;">
       Escolha se quer ver os cofres e contas compartilhados da casa, ou só os do seu perfil pessoal. O padrão é Casa.
     </div>
 
@@ -2056,7 +2056,7 @@ if (!window.storage) {
 // Exibida em Configurações → Desenvolvedor → "Dueto vX.X.X"
 // Formato: MAJOR.MINOR.PATCH  — ex: 2.1.0 → 2.1.1 (bugfix) ou 2.2.0 (feature)
 // ================================================================
-const APP_VERSION = '2.9.7';  // last updated: 2026-07-14 — fix: botões do cofre agrupados (Guardar/Retirar/Enviar/Mais); removida variável "who" morta; campo "destino" escondido onde não tem efeito
+const APP_VERSION = '3.0.0';  // last updated: 2026-07-14 — versão renumerada: após 2.9.x vem 3.0.0 (convenção pedida pelo usuário)
 
 // Dev Mode — Force reload bypassing all browser cache so device gets latest version.
 // Shows current version before reloading so the user can see if it changed.
@@ -2141,6 +2141,10 @@ function nextMonthKey(key){
   const [y,m] = key.split('-').map(Number);
   return monthKeyFor(new Date(y, m, 1));
 }
+function addMonthsToKey(key, n){
+  const [y,m] = key.split('-').map(Number);
+  return monthKeyFor(new Date(y, m-1+n, 1));
+}
 function monthLabelFor(key){
   const [y,m] = key.split('-').map(Number);
   return new Date(y, m-1, 1).toLocaleDateString('pt-BR', { month:'long', year:'numeric' });
@@ -2174,7 +2178,11 @@ function getFeiraVault(createIfMissing = false){
   return feira;
 }
 function billAmount(entry, bill){ return entry.billOverrides.hasOwnProperty(bill.id) ? entry.billOverrides[bill.id] : bill.defaultAmount; }
-function isBillDueThisMonth(b){ return (!b.dueMonthKey || b.dueMonthKey === currentMonthKey) && inScope(b.ownerId); }
+function isBillDueThisMonth(b){
+  if(b.dueMonthKey && b.dueMonthKey !== currentMonthKey) return false;
+  if(b.endMonthKey && currentMonthKey > b.endMonthKey) return false;
+  return inScope(b.ownerId);
+}
 function payToVaultName(b){ const v = vaults.find(x=>x.id===b.payToVaultId); return v ? escapeHtml(v.name) : 'origem'; }
 function currentScope(){ return localSettings.currentProfile || 'casa'; }
 function inScope(ownerId){ const scope = currentScope(); return scope === 'casa' ? !ownerId : ownerId === scope; }
@@ -2601,11 +2609,23 @@ async function pickProfile(scope){
 function renderProfileSwitcher(){
   const slots = document.querySelectorAll('.profile-switcher-slot'); if(slots.length === 0) return;
   const scope = currentScope();
-  const options = [
-    { key:'casa', label:'🏠 Casa' },
-    { key:'a',    label:`👤 ${names.a || 'Pessoa A'}` },
-    { key:'b',    label:`👤 ${names.b || 'Pessoa B'}` },
-  ];
+  const options = [{ key:'casa', label:'🏠 Casa' }];
+  if(names.a && names.a.trim()) options.push({ key:'a', label:`👤 ${names.a}` });
+  if(names.b && names.b.trim()) options.push({ key:'b', label:`👤 ${names.b}` });
+  if(options.length === 1){
+    // Ninguém foi nomeado ainda em Configurações → não força a existência de perfis pessoais.
+    document.querySelectorAll('.profile-switcher-slot').forEach(el => el.innerHTML = '');
+    const hint = document.getElementById('profileSwitcherHint');
+    if(hint) hint.textContent = 'Dê um nome a "Pessoa A" (e "Pessoa B", se usar o app a dois) logo acima, em Perfis, para liberar espaços pessoais separados da Casa.';
+    if(scope !== 'casa') pickProfile('casa');
+    return;
+  }
+  const hint = document.getElementById('profileSwitcherHint');
+  if(hint) hint.textContent = 'Escolha se quer ver os cofres e contas compartilhados da casa, ou só os do seu perfil pessoal. O padrão é Casa.';
+  if(scope !== 'casa' && !options.some(o => o.key === scope)){
+    pickProfile('casa');
+    return;
+  }
   const html = `<div class="seg" style="margin:0 0 14px;">${options.map(o=>`<div class="seg-opt ${o.key===scope?'active':''}" onclick="pickProfile('${o.key}')">${o.label}</div>`).join('')}</div>`;
   slots.forEach(el => el.innerHTML = html);
 }
@@ -2797,8 +2817,11 @@ function personAvatarInner(key, label){
 function renderSettings(){
   document.getElementById('syncUrl').value = syncUrl || '';
 
-  // Render profile cards
-  const profiles = getProfiles();
+  // Render profile cards. "Perfil B" fica escondido enquanto não tiver nome
+  // nem foto — evita a sensação de ser obrigatório num app de uma pessoa só.
+  // "+ Adicionar perfil" revela ele primeiro antes de criar um perfil extra.
+  const bIsUnused = !names.b && !names.photoB && !window._forceShowProfileB;
+  const profiles = getProfiles().filter(p => !(p.key === 'b' && bIsUnused));
   const colors = ['a','b','c','d'];
   const colorMap = { a:'var(--vault-light)', b:'var(--terracotta-light)', c:'var(--brass)', d:'#7B68C8' };
   document.getElementById('profileCardsList').innerHTML = profiles.map((p, i) => {
@@ -2818,11 +2841,12 @@ function renderSettings(){
           <input type="file" accept="image/*" style="display:none;" onchange="handleProfilePhotoChange('${p.key}', this)" />
         </label>
         <div class="profile-card-info">
-          <input class="profile-card-name-input" type="text" value="${escapeHtml(p.name)}" placeholder="Nome" maxlength="30"
+          <input class="profile-card-name-input" type="text" value="${escapeHtml(p.name)}" placeholder="${p.key==='b' ? 'Nome (opcional)' : 'Nome'}" maxlength="30"
             oninput="updateProfileName('${p.key}', this.value)" />
           <span class="profile-card-tag ${colorKey}">Perfil ${p.key.toUpperCase()}</span>
         </div>
       </div>
+      ${p.key==='b' ? '<div class="section-sub" style="margin:2px 2px 10px; font-size:11px;">Deixe em branco se você usa o app sozinho(a) — nada obriga a preencher esse perfil.</div>' : ''}
       <div class="profile-card-actions">
         ${p.photo
           ? `<button class="profile-action-btn danger" onclick="removeProfilePhoto('${p.key}')">Remover foto</button>`
@@ -2879,6 +2903,7 @@ function updateProfileName(key, value){
     persistNames();
     persistAppSettings();
     syncAllAvatars();
+    renderProfileSwitcher();
     renderAll(); renderMonth();
   }, 500);
 }
@@ -2971,6 +2996,12 @@ async function removeProfilePhoto(key){
 }
 
 async function addProfile(){
+  if(!names.b && !names.photoB && !window._forceShowProfileB){
+    window._forceShowProfileB = true;
+    renderSettings();
+    setTimeout(() => { const el = document.getElementById('profileAvatar-b'); if(el) el.scrollIntoView({behavior:'smooth', block:'center'}); }, 50);
+    return;
+  }
   const usedKeys = getProfiles().map(p => p.key);
   const letters = 'cdefghijklmnopqrstuvwxyz'.split('');
   const newKey = letters.find(l => !usedKeys.includes(l)) || uid().slice(0,2);
@@ -4265,6 +4296,12 @@ function renderBills(entry){
     const fromVault   = b.payFromVaultId ? vaults.find(v=>v.id === b.payFromVaultId) : null;
     const toVault     = b.payToVaultId   ? vaults.find(v=>v.id === b.payToVaultId)   : null;
     const loanBadge   = (fromVault && toVault) ? `<span class="bill-tag" style="background:var(--brass); color:#fff; font-size:9.5px;">🏦 ${fromVault.name} → ${toVault.name}</span>` : '';
+    const createdKeyForBadge = b.createdMonthKey || currentMonthKey;
+    const durationBadge = b.endMonthKey
+      ? (b.endMonthKey === createdKeyForBadge
+          ? `<span class="bill-tag" style="background:var(--text-faint); color:#fff; font-size:9.5px;">só este mês</span>`
+          : `<span class="bill-tag" style="background:var(--text-faint); color:#fff; font-size:9.5px;">até ${monthLabelFor(b.endMonthKey)}</span>`)
+      : '';
     if(isHidden){
       return `
       <div class="bill-row" style="opacity:0.5; background:repeating-linear-gradient(135deg, transparent, transparent 6px, rgba(184,134,43,0.06) 6px, rgba(184,134,43,0.06) 12px);">
@@ -4284,7 +4321,7 @@ function renderBills(entry){
       <div class="bill-row">
         <div class="bill-check ${paid?'checked':''}" onclick="${paid ? `unpayBill('${b.id}')` : (b.payFromVaultId ? `confirmPayVaultBill('${b.id}')` : `openPayBillSheet('${b.id}')`)}">${paid?'✓':''}</div>
         <div class="bill-info">
-          <div class="bill-name ${paid?'paid':''}">${escapeHtml(b.name)} ${vaultBadge}${loanBadge}</div>
+          <div class="bill-name ${paid?'paid':''}">${escapeHtml(b.name)} ${vaultBadge}${loanBadge}${durationBadge}</div>
           <div class="bill-sub">${sourceSummary}</div>
         </div>
         <div class="bill-amount-wrap">
@@ -4521,15 +4558,33 @@ function openNewBillSheet(){
       </div>
     </div>
     <div class="field"><label id="billAmountLabel">Valor (repete todo mês)</label><div class="field-money"><input type="number" id="newBillAmount" placeholder="0,00" inputmode="decimal" /></div></div>
+    <div class="field">
+      <label>Repetir</label>
+      <div class="seg" id="billDurationSeg">
+        <div class="seg-opt active" data-d="all" onclick="pickBillDuration('all')">Todos os meses</div>
+        <div class="seg-opt" data-d="once" onclick="pickBillDuration('once')">Só este mês</div>
+        <div class="seg-opt" data-d="n" onclick="pickBillDuration('n')">Por X meses</div>
+      </div>
+      <div class="field-money" id="billDurationCountWrap" style="display:none; margin-top:8px;">
+        <input type="number" id="billDurationCount" placeholder="quantos meses" min="1" inputmode="numeric" />
+      </div>
+    </div>
     <button class="btn btn-primary" onclick="createBill()">Adicionar despesa</button>
     <button class="btn btn-ghost" onclick="closeSheet()">Cancelar</button>
   `);
+  window._pendingBillDuration = 'all';
   window._pendingBillKind = 'fixa';
 }
 function pickBillKind(k){
   window._pendingBillKind = k;
   document.querySelectorAll('#billKindSeg .seg-opt').forEach(el => el.classList.toggle('active', el.dataset.k === k));
   document.getElementById('billAmountLabel').textContent = k === 'fixa' ? 'Valor (repete todo mês)' : 'Valor estimado para este mês';
+}
+function pickBillDuration(d){
+  window._pendingBillDuration = d;
+  document.querySelectorAll('#billDurationSeg .seg-opt').forEach(el => el.classList.toggle('active', el.dataset.d === d));
+  const wrap = document.getElementById('billDurationCountWrap');
+  if(wrap) wrap.style.display = (d === 'n') ? 'block' : 'none';
 }
 async function getOrCreatePersonalVault(person){
   let v = vaults.find(x => x.ownerId === person && x.isPersonalDefault);
@@ -4544,6 +4599,7 @@ async function createBill(){
   const amount      = parseFloat(document.getElementById('newBillAmount').value) || 0;
   const targetValue = document.getElementById('billTargetVault').value || null;
   const kind        = window._pendingBillKind || 'fixa';
+  const duration    = window._pendingBillDuration || 'all';
   if(!name){ showToast('Dê um nome à conta'); return; }
   let targetVaultId = targetValue;
   if(targetValue && targetValue.startsWith('person:')){
@@ -4551,13 +4607,26 @@ async function createBill(){
     const personalVault = await getOrCreatePersonalVault(person);
     targetVaultId = personalVault.id;
   }
+  let endMonthKey = null;
+  if(duration === 'once'){
+    endMonthKey = currentMonthKey;
+  } else if(duration === 'n'){
+    const n = parseInt(document.getElementById('billDurationCount').value, 10);
+    if(!n || n < 1){ showToast('Diga por quantos meses'); return; }
+    endMonthKey = addMonthsToKey(currentMonthKey, n - 1);
+  }
   const ownerId = currentScope() === 'casa' ? null : currentScope();
-  bills.push({ id: uid(), name, defaultAmount: amount, kind, targetVaultId, createdMonthKey: currentMonthKey, ownerId });
+  bills.push({ id: uid(), name, defaultAmount: amount, kind, targetVaultId, createdMonthKey: currentMonthKey, ownerId, endMonthKey });
   await persistBills(); closeSheet(); showToast('Adicionado com sucesso'); renderMonth();
 }
 
 // Fix 4: Edit existing bill — allows changing name, vault destination, amount and type.
 // UPDATE THIS COMMENT when bumping APP_VERSION below.
+function monthsBetweenKeys(startKey, endKey){
+  const [y1,m1] = startKey.split('-').map(Number);
+  const [y2,m2] = endKey.split('-').map(Number);
+  return (y2-y1)*12 + (m2-m1) + 1;
+}
 function openEditBillSheet(billId){
   const b = bills.find(x=>x.id===billId); if(!b) return;
   pendingEmoji = b.emoji || '';
@@ -4576,6 +4645,27 @@ function openEditBillSheet(billId){
   const noteText = isVaultLoanBill
     ? '<div class="section-sub" style="margin:-4px 2px 14px;">Esta é a devolução de um empréstimo entre cofres — o pagamento sempre volta para o cofre de origem, não dá pra escolher outro destino aqui.</div>'
     : (isPersonalBill ? '<div class="section-sub" style="margin:-4px 2px 14px;">Despesa pessoal — ao pagar, você escolhe de qual dos seus cofres vai sair o dinheiro.</div>' : '');
+
+  const createdKey = b.createdMonthKey || currentMonthKey;
+  let curDuration = 'all', curCount = 3;
+  if(b.endMonthKey){
+    curDuration = (b.endMonthKey === createdKey) ? 'once' : 'n';
+    curCount = Math.max(1, monthsBetweenKeys(createdKey, b.endMonthKey));
+  }
+  window._pendingBillDuration = curDuration;
+  const durationField = isVaultLoanBill ? '' : `
+    <div class="field">
+      <label>Repetir</label>
+      <div class="seg" id="billDurationSeg">
+        <div class="seg-opt ${curDuration==='all'?'active':''}" data-d="all" onclick="pickBillDuration('all')">Todos os meses</div>
+        <div class="seg-opt ${curDuration==='once'?'active':''}" data-d="once" onclick="pickBillDuration('once')">Só este mês</div>
+        <div class="seg-opt ${curDuration==='n'?'active':''}" data-d="n" onclick="pickBillDuration('n')">Por X meses</div>
+      </div>
+      <div class="field-money" id="billDurationCountWrap" style="display:${curDuration==='n'?'block':'none'}; margin-top:8px;">
+        <input type="number" id="billDurationCount" placeholder="quantos meses" min="1" value="${curCount}" inputmode="numeric" />
+      </div>
+    </div>`;
+
   openSheet(`
     ${sheetHeader(`Editar despesa`)}
     <div class="sheet-sub">Altere os dados desta conta ou despesa.</div>
@@ -4590,6 +4680,7 @@ function openEditBillSheet(billId){
       </div>
     </div>
     <div class="field"><label>Valor padrão</label><div class="field-money"><input type="number" id="editBillAmount" value="${b.defaultAmount}" inputmode="decimal" /></div></div>
+    ${durationField}
     <button class="btn btn-primary" onclick="saveEditBill()">Salvar alterações</button>
     <button class="btn btn-ghost" onclick="closeSheet()">Cancelar</button>
   `);
@@ -4604,6 +4695,22 @@ async function saveEditBill(){
   const targetEl = document.getElementById('editBillTargetVault');
   if(targetEl) b.targetVaultId = targetEl.value || null;
   b.kind          = window._pendingBillKind || b.kind;
+
+  const durationEl = document.getElementById('billDurationSeg');
+  if(durationEl){
+    const duration  = window._pendingBillDuration || 'all';
+    const createdKey = b.createdMonthKey || currentMonthKey;
+    if(duration === 'all'){
+      b.endMonthKey = null;
+    } else if(duration === 'once'){
+      b.endMonthKey = createdKey;
+    } else if(duration === 'n'){
+      const n = parseInt(document.getElementById('billDurationCount').value, 10);
+      if(!n || n < 1){ showToast('Diga por quantos meses'); return; }
+      b.endMonthKey = addMonthsToKey(createdKey, n - 1);
+    }
+  }
+
   await persistBills(); closeSheet(); showToast('Despesa atualizada'); renderMonth();
 }
 
