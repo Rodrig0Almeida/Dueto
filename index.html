@@ -2056,7 +2056,7 @@ if (!window.storage) {
 // Exibida em Configurações → Desenvolvedor → "Dueto vX.X.X"
 // Formato: MAJOR.MINOR.PATCH  — ex: 2.1.0 → 2.1.1 (bugfix) ou 2.2.0 (feature)
 // ================================================================
-const APP_VERSION = '3.0.0';  // last updated: 2026-07-14 — versão renumerada: após 2.9.x vem 3.0.0 (convenção pedida pelo usuário)
+const APP_VERSION = '3.0.1';  // last updated: 2026-07-14 — added: botão "Remover perfil B" em Configurações (esconde e limpa o nome/foto, sem apagar cofres/despesas associados)
 
 // Dev Mode — Force reload bypassing all browser cache so device gets latest version.
 // Shows current version before reloading so the user can see if it changed.
@@ -2841,18 +2841,20 @@ function renderSettings(){
           <input type="file" accept="image/*" style="display:none;" onchange="handleProfilePhotoChange('${p.key}', this)" />
         </label>
         <div class="profile-card-info">
-          <input class="profile-card-name-input" type="text" value="${escapeHtml(p.name)}" placeholder="${p.key==='b' ? 'Nome (opcional)' : 'Nome'}" maxlength="30"
+          <input class="profile-card-name-input" type="text" value="${escapeHtml(p.name)}" placeholder="Nome" maxlength="30"
             oninput="updateProfileName('${p.key}', this.value)" />
           <span class="profile-card-tag ${colorKey}">Perfil ${p.key.toUpperCase()}</span>
         </div>
       </div>
-      ${p.key==='b' ? '<div class="section-sub" style="margin:2px 2px 10px; font-size:11px;">Deixe em branco se você usa o app sozinho(a) — nada obriga a preencher esse perfil.</div>' : ''}
       <div class="profile-card-actions">
         ${p.photo
           ? `<button class="profile-action-btn danger" onclick="removeProfilePhoto('${p.key}')">Remover foto</button>`
           : ''}
         ${canDelete
           ? `<button class="profile-action-btn danger" onclick="deleteProfile('${p.key}')">Excluir perfil</button>`
+          : ''}
+        ${p.key==='b'
+          ? `<button class="profile-action-btn danger" onclick="clearProfileB()">Remover perfil B</button>`
           : ''}
       </div>
     </div>`;
@@ -3012,6 +3014,23 @@ async function addProfile(){
   showToast('Perfil adicionado');
 }
 
+async function clearProfileB(){
+  const bVaults = vaults.filter(v => v.ownerId === 'b').length;
+  const bBills  = bills.filter(b => b.ownerId === 'b').length;
+  const dataWarning = (bVaults || bBills)
+    ? ` Ele tem ${bVaults} cofre(s) e ${bBills} despesa(s) pessoais — eles não serão apagados, só ficam escondidos até você colocar o nome de volta.`
+    : '';
+  if(!confirm(`Remover o Perfil B?${dataWarning}`)) return;
+  names.b = '';
+  names.photoB = null;
+  window._forceShowProfileB = false;
+  if(currentScope() === 'b'){ localSettings.currentProfile = 'casa'; await persistLocalSettings(); }
+  await persistNames();
+  renderSettings();
+  renderProfileSwitcher();
+  renderAll(); renderMonth();
+  showToast('Perfil B removido');
+}
 async function deleteProfile(key){
   if(!confirm('Excluir este perfil?')) return;
   appSettings.extraProfiles = (appSettings.extraProfiles || []).filter(p => p.key !== key);
