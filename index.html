@@ -1442,7 +1442,7 @@ body.dark .loan-progress-bg { background: rgba(255,255,255,0.14); }
   box-shadow: var(--shadow-sm);
 }
 .profile-card-head {
-  display: flex; align-items: center; gap: 14px; margin-bottom: 14px;
+  display: flex; align-items: center; gap: 14px;
 }
 .profile-card-avatar {
   width: 60px; height: 60px; min-width: 60px;
@@ -1478,6 +1478,12 @@ body.dark .loan-progress-bg { background: rgba(255,255,255,0.14); }
   border-bottom: 1.5px solid var(--line);
 }
 .profile-card-name-input:focus { border-color: var(--vault-light); }
+.profile-card-name-display {
+  font-size: var(--text-lg); font-weight: 700;
+  color: var(--ink);
+  margin: 0 0 4px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .profile-card-tag {
   font-size: var(--text-xs); font-weight: 700;
   padding: 2px 8px; border-radius: var(--r-full);
@@ -1906,6 +1912,13 @@ body.dark .loan-progress-bg { background: rgba(255,255,255,0.14); }
         <button class="btn btn-ghost" style="text-align:left;padding:10px 4px;" onclick="devExportData()">📤 Exportar dados (JSON)</button>
         <button class="btn btn-ghost" style="text-align:left;padding:10px 4px;" onclick="devCheckForUpdate()">🔄 Verificar atualização</button>
       </div>
+      <div class="section-head" style="margin-top:16px;"><div class="section-title" style="font-size:15px;">📋 Log de sincronização</div></div>
+      <div class="section-sub" style="margin-bottom:10px;">Últimos eventos de sincronização (sucesso, erro, tempo esgotado) — útil pra perceber se um problema é do app, da rede, ou da planilha estar lenta.</div>
+      <div id="syncLogContainer" style="max-height:280px;overflow-y:auto;border:1px solid var(--line);border-radius:var(--r-md);padding:2px;margin-bottom:8px;"></div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-ghost" style="flex:1;text-align:center;padding:10px 4px;" onclick="exportSyncLog()">📤 Exportar log</button>
+        <button class="btn btn-ghost" style="flex:1;text-align:center;padding:10px 4px;color:var(--terracotta);" onclick="clearSyncLog()">🗑️ Limpar log</button>
+      </div>
     </div>
     <div style="text-align:center; margin-top:24px; margin-bottom:4px; font-size:11px; color:var(--text-faint);">
       <!-- Fix 6: Version string — update APP_VERSION constant in JS when modifying the code -->
@@ -2056,7 +2069,7 @@ if (!window.storage) {
 // Exibida em Configurações → Desenvolvedor → "Dueto vX.X.X"
 // Formato: MAJOR.MINOR.PATCH  — ex: 2.1.0 → 2.1.1 (bugfix) ou 2.2.0 (feature)
 // ================================================================
-const APP_VERSION = '3.0.1';  // last updated: 2026-07-14 — added: botão "Remover perfil B" em Configurações (esconde e limpa o nome/foto, sem apagar cofres/despesas associados)
+const APP_VERSION = '3.1.0';  // last updated: 2026-07-14 — added: log de sincronização exportável, timeout+retry automático (portado do Corrida+); cards de perfil simplificados para um botão "Editar" só
 
 // Dev Mode — Force reload bypassing all browser cache so device gets latest version.
 // Shows current version before reloading so the user can see if it changed.
@@ -2120,6 +2133,19 @@ let syncUrl = '';                 // configured in Settings, local-only, never s
 let syncPushTimer = null;         // debounce timer for outgoing pushes
 const SYNC_DEBOUNCE_MS = 2000;    // wait 2s after the last edit before pushing
 const SYNC_KEYS = ['vaults','txns','loans','bills','monthData','names','appSettings']; // keys that trigger a cloud push — appSettings syncs shared prefs (profiles)
+const SYNC_TIMEOUT_MS = 15000;    // abort a stuck fetch after 15s instead of hanging forever
+const SYNC_MAX_RETRIES = 2;       // total of 3 attempts (1 original + 2 retries) for fast/transient failures
+
+// Log de sincronização — guarda os últimos eventos (sucesso, erro, timeout)
+// para diagnosticar problemas de rede sem precisar de ferramentas externas.
+// Device-local only: nunca sincronizado, cada aparelho tem o seu próprio log.
+let syncLog = [];
+const SYNC_LOG_MAX = 50;
+function logSyncEvent(type, message, extra){
+  syncLog.unshift({ ts: Date.now(), type, message, extra: extra || null }); // type: 'success' | 'error' | 'timeout' | 'info'
+  if(syncLog.length > SYNC_LOG_MAX) syncLog.length = SYNC_LOG_MAX;
+  try{ window.storage.set('syncLog', JSON.stringify(syncLog)); }catch(e){}
+}
 const SYNC_PILL_SCREENS = ['home','month','feira','loans','settings','stats']; // every screen now shows its own sync pill
 const MONEY_SOURCES = [
   { key:'fisico', label:'Dinheiro físico', emoji:'💵' },
@@ -2222,6 +2248,7 @@ function uid(){ return Math.random().toString(36).slice(2,10) + Date.now().toStr
 // part of the cloud payload and never triggers a cloud push.
 async function loadLocalOnlySettings(){
   try{ const su = await window.storage.get('syncUrl'); syncUrl = su ? (su.value || '')    : '';   }catch(e){ syncUrl = ''; }
+  try{ const sl = await window.storage.get('syncLog'); syncLog = sl ? (JSON.parse(sl.value) || []) : []; }catch(e){ syncLog = []; }
   // localSettings — appearance prefs, device-only, never synced to cloud
   let hadLocalSettings = false;
   try{ const ls = await window.storage.get('localSettings'); if(ls){ hadLocalSettings = true; localSettings = { ...localSettings, ...JSON.parse(ls.value) }; } }catch(e){}
@@ -2289,6 +2316,49 @@ function hideLoadingState(){
   if(splash){ splash.classList.add('hide'); setTimeout(()=>splash.remove(), 400); }
 }
 
+// Fetches the current cloud payload with a hard timeout (SYNC_TIMEOUT_MS) via
+// AbortController — without this, a slow/stuck Apps Script could leave the
+// app "hanging" indefinitely with no feedback. Very fast failures (<500ms)
+// are treated as transient rate-limiting/cold-start hiccups and get retried
+// automatically (up to SYNC_MAX_RETRIES) with growing backoff before giving up.
+async function _fetchCloudData(attempt){
+  attempt = attempt || 1;
+  const startTime = Date.now();
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), SYNC_TIMEOUT_MS);
+  try{
+    const res = await fetch(syncUrl, { method: 'GET', signal: controller.signal });
+    clearTimeout(timeoutId);
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    if(!data || typeof data !== 'object') throw new Error('Resposta inválida da planilha');
+    const elapsedMs = Date.now() - startTime;
+    logSyncEvent('success', 'Sincronizado com sucesso', `${elapsedMs}ms · ${JSON.stringify(data).length} bytes`);
+    return data;
+  }catch(err){
+    clearTimeout(timeoutId);
+    const elapsedMs = Date.now() - startTime;
+    if(err.name === 'AbortError'){
+      logSyncEvent('timeout', `Tempo esgotado após ${(SYNC_TIMEOUT_MS/1000).toFixed(0)}s — a ligação com a planilha está lenta`, `${elapsedMs}ms · tentativa ${attempt}`);
+      throw err;
+    }
+    const looksTransient = elapsedMs < 500;
+    if(looksTransient && attempt <= SYNC_MAX_RETRIES){
+      const backoffMs = attempt * 800;
+      logSyncEvent('info', `Falha rápida (${err.message || err.name}) — a tentar de novo em ${backoffMs}ms`, `tentativa ${attempt} de ${SYNC_MAX_RETRIES+1}`);
+      await new Promise(r => setTimeout(r, backoffMs));
+      return _fetchCloudData(attempt + 1);
+    }
+    let host = '?';
+    try{ host = new URL(syncUrl).host; }catch(e){}
+    const hint = looksTransient
+      ? ` — falhou rápido mesmo após ${attempt} tentativas; provavelmente CORS, URL errada, ou a implantação do Apps Script não está publicada como "Qualquer pessoa"`
+      : '';
+    logSyncEvent('error', `${err.name || 'Error'}: ${err.message || 'Erro desconhecido'}${hint}`, `${elapsedMs}ms · host: ${host} · tentativa ${attempt}`);
+    throw err;
+  }
+}
+
 // Called once on page open, and manually whenever the user taps the sync pill.
 // Does a SINGLE fetch — no polling/setInterval, since Apps Script rate-limits.
 async function loadAll(manual = false){
@@ -2318,10 +2388,7 @@ async function loadAll(manual = false){
           console.warn('Falha ao reenviar alterações pendentes da sessão anterior:', e);
         }
       }
-      const res = await fetch(syncUrl, { method: 'GET' });
-      if(!res.ok) throw new Error('HTTP ' + res.status);
-      const data = await res.json();
-      if(!data || typeof data !== 'object') throw new Error('Resposta inválida da planilha');
+      const data = await _fetchCloudData();
       applyCloudData(data);
       await persistLocalOnlySilently();
       setSyncStatus('synced');
@@ -2408,18 +2475,32 @@ function scheduleCloudPush(){
 async function pushToCloud(){
   if(!syncUrl) return;
   const payload = buildCloudPayload();
+  const body = JSON.stringify(payload);
+  const pushStart = Date.now();
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), SYNC_TIMEOUT_MS);
   try{
     await fetch(syncUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify(payload)
+      body,
+      signal: controller.signal
     });
+    clearTimeout(timeoutId);
     try{ localStorage.removeItem(PENDING_PUSH_KEY); }catch(e){}
     setSyncStatus('synced');
+    logSyncEvent('success', 'Dados enviados para a nuvem', `${Date.now()-pushStart}ms · ${body.length} bytes`);
   }catch(err){
+    clearTimeout(timeoutId);
+    const elapsedMs = Date.now() - pushStart;
     console.warn('Falha ao enviar dados para a nuvem:', err);
     // Keep PENDING_PUSH_KEY set — we'll retry it on next app load.
     setSyncStatus('nolink');
+    if(err.name === 'AbortError'){
+      logSyncEvent('timeout', `Envio demorou demais (>${(SYNC_TIMEOUT_MS/1000).toFixed(0)}s) — ligação lenta`, `${elapsedMs}ms`);
+    } else {
+      logSyncEvent('error', `Falha ao enviar: ${err.message || 'erro desconhecido'}`, `${elapsedMs}ms`);
+    }
   }
 }
 
@@ -2829,33 +2910,17 @@ function renderSettings(){
     const bgColor = colorMap[colorKey];
     const avatarBg = p.photo ? `url(${p.photo})` : '';
     const avatarText = p.photo ? '' : (p.name.trim().charAt(0) || p.key).toUpperCase();
-    const canDelete = p.key !== 'a' && p.key !== 'b';
     return `
-    <div class="profile-card">
+    <div class="profile-card" id="profileCard-${p.key}">
       <div class="profile-card-head">
-        <label style="cursor:pointer;">
-          <div class="profile-card-avatar" style="background-color:${bgColor}; ${avatarBg ? 'background-image:'+avatarBg+';background-size:contain;background-position:center;background-repeat:no-repeat;' : ''}" id="profileAvatar-${p.key}">
-            ${avatarText}
-            <div class="profile-card-avatar-label">foto</div>
-          </div>
-          <input type="file" accept="image/*" style="display:none;" onchange="handleProfilePhotoChange('${p.key}', this)" />
-        </label>
+        <div class="profile-card-avatar" style="background-color:${bgColor}; ${avatarBg ? 'background-image:'+avatarBg+';background-size:contain;background-position:center;background-repeat:no-repeat;' : ''}">
+          ${avatarText}
+        </div>
         <div class="profile-card-info">
-          <input class="profile-card-name-input" type="text" value="${escapeHtml(p.name)}" placeholder="Nome" maxlength="30"
-            oninput="updateProfileName('${p.key}', this.value)" />
+          <div class="profile-card-name-display">${escapeHtml(p.name) || 'Sem nome'}</div>
           <span class="profile-card-tag ${colorKey}">Perfil ${p.key.toUpperCase()}</span>
         </div>
-      </div>
-      <div class="profile-card-actions">
-        ${p.photo
-          ? `<button class="profile-action-btn danger" onclick="removeProfilePhoto('${p.key}')">Remover foto</button>`
-          : ''}
-        ${canDelete
-          ? `<button class="profile-action-btn danger" onclick="deleteProfile('${p.key}')">Excluir perfil</button>`
-          : ''}
-        ${p.key==='b'
-          ? `<button class="profile-action-btn danger" onclick="clearProfileB()">Remover perfil B</button>`
-          : ''}
+        <button class="profile-action-btn" onclick="openEditProfileSheet('${p.key}')">✏️ Editar</button>
       </div>
     </div>`;
   }).join('');
@@ -2889,9 +2954,103 @@ function renderSettings(){
   if(devToggle) devToggle.classList.toggle('on', !!(localSettings && localSettings.devMode));
   const devPanel = document.getElementById('devModePanel');
   if(devPanel) devPanel.style.display = (localSettings && localSettings.devMode) ? '' : 'none';
+  renderSyncLog();
 }
 
 let profileNameTimer = null;
+function openEditProfileSheet(key){
+  const p = getProfiles().find(x => x.key === key); if(!p) return;
+  const isBase = (key === 'a' || key === 'b');
+  const avatarBg = p.photo ? `url(${p.photo})` : '';
+  const avatarText = p.photo ? '' : (p.name.trim().charAt(0) || key).toUpperCase();
+  const destructiveBtn = key === 'a'
+    ? ''
+    : key === 'b'
+      ? `<button class="btn btn-ghost" style="color:var(--terracotta);" onclick="clearProfileB()">Remover perfil B</button>`
+      : `<button class="btn btn-ghost" style="color:var(--terracotta);" onclick="deleteProfile('${key}')">Excluir perfil</button>`;
+  openSheet(`
+    ${sheetHeader(`Editar perfil`)}
+    <div style="display:flex; justify-content:center; margin-bottom:18px;">
+      <label style="cursor:pointer; text-align:center;">
+        <div class="profile-card-avatar" style="width:84px; height:84px; font-size:30px; margin:0 auto; background-color:var(--vault-light); ${avatarBg ? 'background-image:'+avatarBg+';background-size:contain;background-position:center;background-repeat:no-repeat;' : ''}">
+          ${avatarText}
+          <div class="profile-card-avatar-label">foto</div>
+        </div>
+        <input type="file" accept="image/*" style="display:none;" onchange="handleProfilePhotoChange('${key}', this)" />
+      </label>
+    </div>
+    ${p.photo ? `<button class="btn btn-ghost" style="margin-bottom:10px;" onclick="removeProfilePhoto('${key}')">Remover foto</button>` : ''}
+    <div class="field"><label>Nome</label><input type="text" id="editProfileName" value="${escapeHtml(p.name)}" placeholder="Nome" maxlength="30" oninput="updateProfileName('${key}', this.value)" /></div>
+    ${destructiveBtn}
+    <button class="btn btn-ghost" onclick="closeSheet()">Fechar</button>
+  `);
+}
+
+
+// ---------------------------------------------------------------
+// LOG DE SINCRONIZAÇÃO (portado do Corrida+)
+// ---------------------------------------------------------------
+function renderSyncLog(){
+  const box = document.getElementById('syncLogContainer');
+  if(!box) return;
+  if(!syncLog.length){
+    box.innerHTML = `<div style="padding:16px;text-align:center;font-size:12px;color:var(--text-muted);">Ainda sem eventos registados.</div>`;
+    return;
+  }
+  const iconFor  = { success: '✅', error: '❌', timeout: '⏱️', info: 'ℹ️' };
+  const colorFor = { success: 'var(--vault-light)', error: 'var(--terracotta)', timeout: '#C97259', info: 'var(--text-muted)' };
+  box.innerHTML = syncLog.map(entry => {
+    const d = new Date(entry.ts);
+    const time = d.toLocaleString('pt-BR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit', second:'2-digit' });
+    return `<div style="padding:9px 10px;border-bottom:1px solid var(--line);font-size:12px;">
+      <div style="display:flex;justify-content:space-between;gap:8px;">
+        <span style="color:${colorFor[entry.type]||'var(--ink)'};font-weight:700;">${iconFor[entry.type]||'•'} ${escapeHtml(entry.message)}</span>
+        <span style="color:var(--text-faint);white-space:nowrap;font-family:monospace;font-size:11px;">${time}</span>
+      </div>
+      ${entry.extra ? `<div style="color:var(--text-muted);font-family:monospace;font-size:11px;margin-top:2px;">${escapeHtml(entry.extra)}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+function buildSyncLogText(){
+  const lines = syncLog.map(e => {
+    const iso = new Date(e.ts).toISOString();
+    return `[${iso}] [${e.type.toUpperCase()}] ${e.message}${e.extra ? ' — ' + e.extra : ''}`;
+  });
+  const header = `Dueto v${APP_VERSION} — log de sincronização\nDispositivo: ${navigator.userAgent}\nGerado em: ${new Date().toISOString()}\n\n`;
+  return header + lines.join('\n');
+}
+async function exportSyncLog(){
+  if(!syncLog.length){ showToast('Nada para exportar ainda'); return; }
+  const text = buildSyncLogText();
+  // No iPhone/Safari, navigator.share() abre a folha nativa de partilha
+  // (Mensagens, WhatsApp, Mail, etc.) — mais direto do que baixar um arquivo.
+  if(navigator.share){
+    try{
+      await navigator.share({ title: 'Dueto — log de sincronização', text });
+      return;
+    }catch(e){
+      if(e.name === 'AbortError') return; // cancelado, sem problema
+      // outro erro → cai para o download normal abaixo
+    }
+  }
+  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `dueto-sync-log-${new Date().toISOString().slice(0,10)}.txt`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('📤 Log exportado');
+}
+async function clearSyncLog(){
+  if(!confirm('Limpar todo o log de sincronização?')) return;
+  syncLog = [];
+  try{ await window.storage.set('syncLog', JSON.stringify(syncLog)); }catch(e){}
+  renderSyncLog();
+  showToast('Log limpo');
+}
 function updateProfileName(key, value){
   if(key === 'a'){ names.a = value; }
   else if(key === 'b'){ names.b = value; }
@@ -2907,6 +3066,8 @@ function updateProfileName(key, value){
     syncAllAvatars();
     renderProfileSwitcher();
     renderAll(); renderMonth();
+    const list = document.getElementById('profileCardsList');
+    if(list) renderSettings();
   }, 500);
 }
 
@@ -2975,6 +3136,7 @@ async function handleProfilePhotoChange(key, inputEl){
     renderSettings();
     renderMonth();
     renderLoans();
+    openEditProfileSheet(key);
     showToast('Foto atualizada');
   }catch(e){ console.warn('Falha ao processar foto de perfil:', e); showToast('Não foi possível processar a imagem.'); }
   finally { inputEl.value = ''; }
@@ -2994,6 +3156,7 @@ async function removeProfilePhoto(key){
   renderSettings();
   renderMonth();
   renderLoans();
+  openEditProfileSheet(key);
   showToast('Foto removida');
 }
 
@@ -3001,7 +3164,7 @@ async function addProfile(){
   if(!names.b && !names.photoB && !window._forceShowProfileB){
     window._forceShowProfileB = true;
     renderSettings();
-    setTimeout(() => { const el = document.getElementById('profileAvatar-b'); if(el) el.scrollIntoView({behavior:'smooth', block:'center'}); }, 50);
+    setTimeout(() => { const el = document.getElementById('profileCard-b'); if(el) el.scrollIntoView({behavior:'smooth', block:'center'}); }, 50);
     return;
   }
   const usedKeys = getProfiles().map(p => p.key);
@@ -3026,6 +3189,7 @@ async function clearProfileB(){
   window._forceShowProfileB = false;
   if(currentScope() === 'b'){ localSettings.currentProfile = 'casa'; await persistLocalSettings(); }
   await persistNames();
+  closeSheet();
   renderSettings();
   renderProfileSwitcher();
   renderAll(); renderMonth();
@@ -3035,6 +3199,7 @@ async function deleteProfile(key){
   if(!confirm('Excluir este perfil?')) return;
   appSettings.extraProfiles = (appSettings.extraProfiles || []).filter(p => p.key !== key);
   await persistAppSettings();
+  closeSheet();
   renderSettings();
   showToast('Perfil removido');
 }
@@ -3094,6 +3259,7 @@ async function toggleDevMode(){
   // Fix 5: Show/hide floating toolbar on all screens
   const toolbar = document.getElementById('devToolbar');
   if(toolbar) toolbar.style.display = localSettings.devMode ? '' : 'none';
+  renderSyncLog();
   showToast(localSettings.devMode ? '🛠️ Modo Dev ativado — barra flutuante visível em todas as telas' : 'Modo Dev desativado');
 }
 function devOpenEditVaults(){
