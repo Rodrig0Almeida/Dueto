@@ -2114,7 +2114,7 @@ if (!window.storage) {
 // Exibida em Configurações → Desenvolvedor → "Dueto vX.X.X"
 // Formato: MAJOR.MINOR.PATCH  — ex: 2.1.0 → 2.1.1 (bugfix) ou 2.2.0 (feature)
 // ================================================================
-const APP_VERSION = '3.2.1';  // last updated: 2026-07-14 — fix: toast reposicionado mais para baixo, com fallback, pra não ficar embaixo do notch
+const APP_VERSION = '3.2.4';  // last updated: 2026-07-14 — fix: desfazer pagamento de despesa agora identifica a transação certa por ID, não pelo texto da nota — corrige bug ao ter dois empréstimos entre cofres com o mesmo valor
 
 // Dev Mode — Force reload bypassing all browser cache so device gets latest version.
 // Shows current version before reloading so the user can see if it changed.
@@ -2419,6 +2419,25 @@ async function _fetchCloudData(attempt){
 
 // Called once on page open, and manually whenever the user taps the sync pill.
 // Does a SINGLE fetch — no polling/setInterval, since Apps Script rate-limits.
+// Remove referências órfãs em monthData (billOverrides/billsPaid/hiddenBills)
+// que apontam para despesas que já não existem em `bills` — resíduo de
+// exclusões antigas, de antes desta limpeza existir em deleteBill(), ou de
+// merges de sincronização. Roda uma vez a cada carregamento; só persiste se
+// realmente encontrar e remover algo, pra não gerar pushes desnecessários.
+function pruneOrphanedBillData(){
+  const validIds = new Set(bills.map(b => b.id));
+  let changed = false;
+  Object.values(monthData).forEach(me => {
+    ['hiddenBills','billsPaid','billOverrides'].forEach(field => {
+      if(!me[field]) return;
+      Object.keys(me[field]).forEach(billId => {
+        if(!validIds.has(billId)){ delete me[field][billId]; changed = true; }
+      });
+    });
+  });
+  return changed;
+}
+
 async function loadAll(manual = false){
   await loadLocalOnlySettings();
 
@@ -2467,10 +2486,12 @@ async function loadAll(manual = false){
       console.warn('Falha ao buscar dados da nuvem, usando dados locais:', err);
       if(manual) showToast(`⚠️ Sync falhou: ${err.message || err}`);
       await loadFromLocalStorage();
+      if(pruneOrphanedBillData()) await persistMonthData();
       setSyncStatus('nolink');
     }
   } else {
     await loadFromLocalStorage();
+    if(pruneOrphanedBillData()) await persistMonthData();
     setSyncStatus('nolink');
     if(manual) showToast('⚠️ Nenhuma URL de sincronização configurada em Configurações');
   }
@@ -3325,6 +3346,7 @@ async function unlockWithPassword(){
 }
 async function finishCloudSync(decoded, manual){
   applyCloudData(decoded);
+  if(pruneOrphanedBillData()) await persistMonthData();
   await persistLocalOnlySilently();
   setSyncStatus('synced');
   if(manual) showToast('✅ Sincronizado com sucesso');
@@ -4963,7 +4985,7 @@ async function unpayBill(billId){
     const targetVault = vaults.find(x => x.id === bill.targetVaultId);
     if(targetVault){
       targetVault.balance = round2(targetVault.balance - amount);
-      const txIndex = txns.findIndex(t => t.vaultId===targetVault.id && t.type==='deposito' && t.amount===amount && t.note===`Transf. Agendada: ${bill.name}`);
+      const txIndex = txns.findIndex(t => t.billId === billId && t.vaultId===targetVault.id && t.type==='deposito');
       if(txIndex !== -1) txns.splice(txIndex, 1);
       await persistVaults(); await persistTxns();
     }
@@ -4975,9 +4997,9 @@ async function unpayBill(billId){
     if(fromVault && toVault){
       fromVault.balance = round2(fromVault.balance + amount);
       toVault.balance   = round2(toVault.balance - amount);
-      const txIndex = txns.findIndex(t => t.vaultId===toVault.id && t.type==='deposito' && t.amount===amount && t.note===`Devolução de empréstimo: ${bill.name}`);
+      const txIndex = txns.findIndex(t => t.billId === billId && t.vaultId===toVault.id && t.type==='deposito');
       if(txIndex !== -1) txns.splice(txIndex, 1);
-      const txIndex2 = txns.findIndex(t => t.vaultId===fromVault.id && t.type==='retirada' && t.amount===amount && t.note===`Devolução de empréstimo: ${bill.name}`);
+      const txIndex2 = txns.findIndex(t => t.billId === billId && t.vaultId===fromVault.id && t.type==='retirada');
       if(txIndex2 !== -1) txns.splice(txIndex2, 1);
       await persistVaults(); await persistTxns();
     }
@@ -4987,7 +5009,7 @@ async function unpayBill(billId){
     const v = vaults.find(x => x.id === paidSplit.personalVaultId);
     if(v){
       v.balance = round2(v.balance + amount);
-      const txIndex = txns.findIndex(t => t.vaultId===v.id && t.type==='retirada' && t.amount===amount && t.note===`Despesa: ${bill.name}`);
+      const txIndex = txns.findIndex(t => t.billId === billId && t.vaultId===v.id && t.type==='retirada');
       if(txIndex !== -1) txns.splice(txIndex, 1);
       await persistVaults(); await persistTxns();
     }
@@ -5019,7 +5041,7 @@ async function deleteBill(billId){
     const targetVault = vaults.find(x => x.id === b.targetVaultId);
     if(targetVault){
       targetVault.balance = round2(targetVault.balance - amount);
-      const txIndex = txns.findIndex(t => t.vaultId===targetVault.id && t.type==='deposito' && t.amount===amount && t.note===`Transf. Agendada: ${b.name}`);
+      const txIndex = txns.findIndex(t => t.billId===billId && t.vaultId===targetVault.id && t.type==='deposito');
       if(txIndex !== -1) txns.splice(txIndex, 1);
       await persistVaults(); await persistTxns();
     }
@@ -5096,7 +5118,7 @@ async function getOrCreatePersonalVault(person){
   let v = vaults.find(x => x.ownerId === person && x.isPersonalDefault);
   if(v) return v;
   const label = names[person] || (person === 'a' ? 'Pessoa A' : 'Pessoa B');
-  v = { id: uid(), name: `Carteira de ${label}`, emoji: '👛', balance: 0, goal: null, createdAt: Date.now(), ownerId: person, isPersonalDefault: true };
+  v = { id: uid(), name: `Carteira Pessoal — ${label}`, emoji: '💰', balance: 0, goal: null, createdAt: Date.now(), ownerId: person, isPersonalDefault: true };
   vaults.push(v); await persistVaults();
   return v;
 }
@@ -5290,7 +5312,7 @@ async function confirmPayBill(billId, amount){
     const v = vaults.find(x => x.id === b.targetVaultId);
     if(v){
       v.balance = round2(v.balance + amount);
-      txns.push({ id: uid(), vaultId: v.id, type:'deposito', amount, note:`Transf. Agendada: ${b.name}`, who: null, ts: Date.now() });
+      txns.push({ id: uid(), vaultId: v.id, type:'deposito', amount, note:`Transf. Agendada: ${b.name}`, who: null, billId: b.id, ts: Date.now() });
       await persistVaults(); await persistTxns();
     }
   }
@@ -5306,7 +5328,7 @@ async function confirmPayPersonalBill(billId){
 
   v.balance = round2(v.balance - amount);
   await persistVaults();
-  txns.push({ id: uid(), vaultId: v.id, type:'retirada', amount, note:`Despesa: ${b.name}`, ts: Date.now() });
+  txns.push({ id: uid(), vaultId: v.id, type:'retirada', amount, note:`Despesa: ${b.name}`, billId: b.id, ts: Date.now() });
   await persistTxns();
 
   entry.billsPaid[billId] = { personalVaultId: v.id };
@@ -5327,8 +5349,8 @@ async function confirmPayVaultBill(billId){
   await persistVaults();
 
   const now = Date.now();
-  txns.push({ id: uid(), vaultId: fromVault.id, type:'retirada', amount, note:`Devolução de empréstimo: ${b.name}`, ts: now });
-  txns.push({ id: uid(), vaultId: toVault.id,   type:'deposito', amount, note:`Devolução de empréstimo: ${b.name}`, ts: now });
+  txns.push({ id: uid(), vaultId: fromVault.id, type:'retirada', amount, note:`Devolução de empréstimo: ${b.name}`, billId: b.id, ts: now });
+  txns.push({ id: uid(), vaultId: toVault.id,   type:'deposito', amount, note:`Devolução de empréstimo: ${b.name}`, billId: b.id, ts: now });
   await persistTxns();
 
   entry.billsPaid[billId] = { vaultLoan: true };
@@ -5364,7 +5386,15 @@ function renderPersonalMonthSummary(entry){
 function renderMonthSummary(entry, totalIncome){
   const visibleBills = bills.filter(b => !entry.hiddenBills[b.id] && isBillDueThisMonth(b));
   const totalBills   = visibleBills.reduce((s,b)=> s + billAmount(entry, b), 0);
-  const freeLeftover = remainingBySource(entry, 'fisico') + remainingBySource(entry, 'conta');
+  // "Sobra livre" precisa bater com as duas linhas mostradas acima dela
+  // (Renda total − Contas e Despesas), senão parece errado — como o valor
+  // aqui não considerava despesas ainda não pagas, chegava a mostrar sobra
+  // positiva mesmo com despesas maiores que a renda.
+  const freeLeftover = totalIncome - totalBills;
+  // Já o valor sugerido pra "Distribuir pelas metas" precisa ser dinheiro
+  // líquido de verdade, ainda não comprometido com nenhuma despesa paga —
+  // por isso continua usando remainingBySource, e não freeLeftover.
+  const liquidLeftover = remainingBySource(entry, 'fisico') + remainingBySource(entry, 'conta');
 
   document.getElementById('monthSummary').innerHTML = `
     <div class="ms-row" style="opacity:0.85;"><div class="ms-label">Renda total cadastrada</div><div class="ms-value">${fmt(totalIncome)}</div></div>
@@ -5377,9 +5407,9 @@ function renderMonthSummary(entry, totalIncome){
   const banner          = document.getElementById('leftoverBanner');
   const vaultsWithGoals = visibleVaults().filter(v => v.goal && v.balance < v.goal);
 
-  if(freeLeftover > 0 && totalIncome > 0){
+  if(liquidLeftover > 0 && totalIncome > 0){
     banner.style.display = 'block';
-    document.getElementById('leftoverValue').textContent = fmt(freeLeftover);
+    document.getElementById('leftoverValue').textContent = fmt(liquidLeftover);
     document.getElementById('leftoverAction').innerHTML = vaultsWithGoals.length > 0
       ? `<button class="btn btn-primary" style="margin-top:0;" onclick="autoDistributeLeftover()">✨ Distribuir pelas metas</button>
          <button class="btn btn-ghost" style="margin-top:0;" onclick="goHome()">Guardar manualmente</button>`
