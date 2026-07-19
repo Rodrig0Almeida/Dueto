@@ -981,7 +981,8 @@ body.dark .menu-item:active { background: rgba(255,255,255,0.1); }
    ================================================================ */
 .toast {
   position: fixed;
-  top: 18px; left: 50%;
+  top: calc(env(safe-area-inset-top, 24px) + 54px);
+  left: 50%;
   transform: translateX(-50%) translateY(-20px);
   background: var(--vault);
   color: #fff;
@@ -989,12 +990,14 @@ body.dark .menu-item:active { background: rgba(255,255,255,0.1); }
   border-radius: var(--r-full);
   font-size: var(--text-sm);
   font-weight: 600;
-  z-index: 100;
+  z-index: 999;
   opacity: 0;
   transition: all 0.25s ease;
   box-shadow: var(--shadow-md);
-  white-space: nowrap;
+  white-space: normal;
+  text-align: center;
   pointer-events: none;
+  max-width: calc(100vw - 32px);
 }
 .toast.show {
   opacity: 1;
@@ -1492,6 +1495,8 @@ body.dark .loan-progress-bg { background: rgba(255,255,255,0.14); }
 }
 .profile-card-tag.a { background: rgba(62,102,80,0.14); color: var(--vault-2); }
 .profile-card-tag.b { background: rgba(168,83,63,0.14); color: var(--terracotta); }
+.profile-card-tag.c { background: rgba(184,134,43,0.16); color: var(--brass); }
+.profile-card-tag.d { background: rgba(123,104,200,0.16); color: #7B68C8; }
 .profile-card-actions {
   display: flex; gap: 8px; flex-wrap: wrap;
 }
@@ -1885,11 +1890,25 @@ body.dark .loan-progress-bg { background: rgba(255,255,255,0.14); }
     </div>
 
     <!-- SINCRONIZAÇÃO -->
-    <div class="field" style="margin-top:20px;">
-      <label>URL de Sincronização (Google Sheets)</label>
-      <input type="url" id="syncUrl" placeholder="https://script.google.com/macros/s/..." oninput="saveSyncUrl()" />
+    <div class="section-head" style="margin-top:20px;"><div class="section-title">Sincronização</div></div>
+    <div id="syncUrlLockedView" style="background:rgba(31,58,46,0.06);border-radius:var(--r-md);padding:14px;margin-top:8px;display:flex;align-items:center;gap:12px;">
+      <div style="font-size:22px;">🔒</div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-weight:700;font-size:var(--text-sm);">URL de Sincronização</div>
+        <div id="syncUrlMasked" style="font-size:11px;color:var(--text-muted);margin-top:2px;word-break:break-all;"></div>
+      </div>
+      <button onclick="unlockSyncUrl()" style="font-size:11px;padding:6px 12px;border-radius:var(--r-full);border:1.5px solid var(--line);background:#fff;cursor:pointer;color:var(--terracotta);font-weight:700;white-space:nowrap;">✏️ Editar</button>
+    </div>
+    <div id="syncUrlEditView" style="display:none;margin-top:8px;">
+      <div class="field">
+        <label>URL de Sincronização (Google Sheets)</label>
+        <input type="url" id="syncUrl" placeholder="https://script.google.com/macros/s/..." oninput="saveSyncUrl()" style="font-size:12px;" />
+      </div>
+      <div style="display:flex;gap:8px;margin-top:6px;">
+        <button onclick="lockSyncUrl()" style="flex:1;padding:10px;border-radius:var(--r-md);border:none;background:var(--vault);color:#fff;font-weight:700;font-size:13px;cursor:pointer;">🔒 Bloquear URL</button>
+      </div>
       <div class="section-sub" style="margin-top:6px; font-size:11px; line-height:1.5;">
-        Cole aqui a URL do seu Google Apps Script. Os dados serão enviados automaticamente ao editar e buscados ao abrir o app. Toque no indicador de status no topo para sincronizar manualmente.
+        Cole aqui a URL do seu Google Apps Script. Após guardar, bloqueie para evitar apagar acidentalmente. Toque no indicador de status no topo para sincronizar manualmente.
       </div>
     </div>
 
@@ -1911,6 +1930,32 @@ body.dark .loan-progress-bg { background: rgba(255,255,255,0.14); }
         <div style="font-size:12px;color:var(--text-muted);line-height:1.5;">Uma barra flutuante <b>🛠️</b> aparece em todas as telas. Ela dá acesso rápido a editar cofres, transações, empréstimos e exportar dados. Toque nos valores nas telas para editar direto.</div>
         <button class="btn btn-ghost" style="text-align:left;padding:10px 4px;" onclick="devExportData()">📤 Exportar dados (JSON)</button>
         <button class="btn btn-ghost" style="text-align:left;padding:10px 4px;" onclick="devCheckForUpdate()">🔄 Verificar atualização</button>
+      </div>
+
+      <div class="section-head" style="margin-top:16px;"><div class="section-title" style="font-size:15px;">🔒 Encriptação dos dados sincronizados</div></div>
+      <div class="switch-row" style="margin-bottom:8px;">
+        <div class="switch-row-text">
+          <div class="switch-row-title">Encriptar antes de enviar à nuvem</div>
+          <div class="switch-row-sub">Cifra o JSON (AES-GCM 256 bits) antes de gravar na planilha. Quem tiver acesso à célula só vê texto ilegível — só decifra com a senha certa. Feature de teste de segurança.</div>
+        </div>
+        <div class="switch" id="encryptionSwitch" onclick="toggleEncryption()"></div>
+      </div>
+      <div id="encryptionPasswordRow" style="display:none;">
+        <button class="btn btn-ghost" style="text-align:left;padding:10px 4px;" onclick="changeEncryptionPassword()">🔑 Trocar senha de encriptação</button>
+        <div class="switch-row" style="margin-top:6px;">
+          <div class="switch-row-text">
+            <div class="switch-row-title">Desbloquear com digital / Face ID</div>
+            <div class="switch-row-sub">Guarda a senha protegida pela biometria deste aparelho, para não precisar de digitá-la sempre. A senha continua a ser a chave real — a biometria só desbloqueia o acesso a ela localmente.</div>
+          </div>
+          <div class="switch" id="biometricSwitch" onclick="toggleBiometricUnlock()"></div>
+        </div>
+        <div class="switch-row" style="margin-top:6px;">
+          <div class="switch-row-text">
+            <div class="switch-row-title">Pedir confirmação a cada sincronização</div>
+            <div class="switch-row-sub">Se ativado, o app sempre pede senha ou biometria antes de decifrar, mesmo já sabendo a senha. Se desativado, decifra automaticamente em segundo plano usando a senha já guardada neste aparelho.</div>
+          </div>
+          <div class="switch" id="requireUnlockSwitch" onclick="toggleRequireUnlockEachSync()"></div>
+        </div>
       </div>
       <div class="section-head" style="margin-top:16px;"><div class="section-title" style="font-size:15px;">📋 Log de sincronização</div></div>
       <div class="section-sub" style="margin-bottom:10px;">Últimos eventos de sincronização (sucesso, erro, tempo esgotado) — útil pra perceber se um problema é do app, da rede, ou da planilha estar lenta.</div>
@@ -2069,7 +2114,7 @@ if (!window.storage) {
 // Exibida em Configurações → Desenvolvedor → "Dueto vX.X.X"
 // Formato: MAJOR.MINOR.PATCH  — ex: 2.1.0 → 2.1.1 (bugfix) ou 2.2.0 (feature)
 // ================================================================
-const APP_VERSION = '3.1.0';  // last updated: 2026-07-14 — added: log de sincronização exportável, timeout+retry automático (portado do Corrida+); cards de perfil simplificados para um botão "Editar" só
+const APP_VERSION = '3.2.1';  // last updated: 2026-07-14 — fix: toast reposicionado mais para baixo, com fallback, pra não ficar embaixo do notch
 
 // Dev Mode — Force reload bypassing all browser cache so device gets latest version.
 // Shows current version before reloading so the user can see if it changed.
@@ -2135,6 +2180,15 @@ const SYNC_DEBOUNCE_MS = 2000;    // wait 2s after the last edit before pushing
 const SYNC_KEYS = ['vaults','txns','loans','bills','monthData','names','appSettings']; // keys that trigger a cloud push — appSettings syncs shared prefs (profiles)
 const SYNC_TIMEOUT_MS = 15000;    // abort a stuck fetch after 15s instead of hanging forever
 const SYNC_MAX_RETRIES = 2;       // total of 3 attempts (1 original + 2 retries) for fast/transient failures
+
+// Encriptação opcional do payload sincronizado (Modo Dev — feature de teste de
+// segurança) e desbloqueio biométrico associado. Device-local, nunca sincronizados.
+let encryptionEnabled = false;
+let encryptionPassword = '';
+let biometricUnlockEnabled = false;
+let requireUnlockEachSync = false;
+let pendingEncryptedPayload = null;
+let pendingManualSync = false;
 
 // Log de sincronização — guarda os últimos eventos (sucesso, erro, timeout)
 // para diagnosticar problemas de rede sem precisar de ferramentas externas.
@@ -2249,6 +2303,10 @@ function uid(){ return Math.random().toString(36).slice(2,10) + Date.now().toStr
 async function loadLocalOnlySettings(){
   try{ const su = await window.storage.get('syncUrl'); syncUrl = su ? (su.value || '')    : '';   }catch(e){ syncUrl = ''; }
   try{ const sl = await window.storage.get('syncLog'); syncLog = sl ? (JSON.parse(sl.value) || []) : []; }catch(e){ syncLog = []; }
+  try{ const ee = await window.storage.get('encryptionEnabled'); encryptionEnabled = ee ? (ee.value === 'true' || ee.value === true) : false; }catch(e){ encryptionEnabled = false; }
+  try{ const ep = await window.storage.get('encryptionPassword'); encryptionPassword = ep ? (ep.value || '') : ''; }catch(e){ encryptionPassword = ''; }
+  try{ const bu = await window.storage.get('biometricUnlockEnabled'); biometricUnlockEnabled = bu ? (bu.value === 'true' || bu.value === true) : false; }catch(e){ biometricUnlockEnabled = false; }
+  try{ const ru = await window.storage.get('requireUnlockEachSync'); requireUnlockEachSync = ru ? (ru.value === 'true' || ru.value === true) : false; }catch(e){ requireUnlockEachSync = false; }
   // localSettings — appearance prefs, device-only, never synced to cloud
   let hadLocalSettings = false;
   try{ const ls = await window.storage.get('localSettings'); if(ls){ hadLocalSettings = true; localSettings = { ...localSettings, ...JSON.parse(ls.value) }; } }catch(e){}
@@ -2374,25 +2432,37 @@ async function loadAll(manual = false){
     try{
       // If a previous session ended (refresh/close) before its debounced push
       // to the cloud fired, we'd otherwise fetch stale data below and silently
-      // wipe out those local-only changes. Resend the pending payload first.
+      // wipe out those local-only changes. Resend the pending payload first —
+      // via pushToCloud() (not a raw re-POST) so it goes through the same
+      // encryption path as any normal push, instead of leaking plaintext.
       const pendingPush = localStorage.getItem(PENDING_PUSH_KEY);
       if(pendingPush){
         try{
-          await fetch(syncUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: pendingPush
-          });
-          localStorage.removeItem(PENDING_PUSH_KEY);
+          await loadFromLocalStorage(); // load the exact state that was pending
+          await pushToCloud();
         }catch(e){
           console.warn('Falha ao reenviar alterações pendentes da sessão anterior:', e);
         }
       }
       const data = await _fetchCloudData();
-      applyCloudData(data);
-      await persistLocalOnlySilently();
-      setSyncStatus('synced');
-      if(manual) showToast('✅ Sincronizado com sucesso');
+      if(data && data.encrypted === true){
+        if(!requireUnlockEachSync && encryptionPassword){
+          try{
+            const decoded = await decryptPayload(data, encryptionPassword);
+            await finishCloudSync(decoded, manual);
+          }catch(e){
+            pendingEncryptedPayload = data;
+            pendingManualSync = manual;
+            openUnlockSheet();
+          }
+        } else {
+          pendingEncryptedPayload = data;
+          pendingManualSync = manual;
+          openUnlockSheet();
+        }
+      } else {
+        await finishCloudSync(data, manual);
+      }
     }catch(err){
       console.warn('Falha ao buscar dados da nuvem, usando dados locais:', err);
       if(manual) showToast(`⚠️ Sync falhou: ${err.message || err}`);
@@ -2475,7 +2545,15 @@ function scheduleCloudPush(){
 async function pushToCloud(){
   if(!syncUrl) return;
   const payload = buildCloudPayload();
-  const body = JSON.stringify(payload);
+  let body;
+  try{
+    body = (encryptionEnabled && encryptionPassword)
+      ? JSON.stringify(await encryptPayload(payload, encryptionPassword))
+      : JSON.stringify(payload);
+  }catch(e){
+    console.warn('Falha ao encriptar payload, enviando sem encriptação:', e);
+    body = JSON.stringify(payload);
+  }
   const pushStart = Date.now();
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), SYNC_TIMEOUT_MS);
@@ -2897,6 +2975,7 @@ function personAvatarInner(key, label){
 
 function renderSettings(){
   document.getElementById('syncUrl').value = syncUrl || '';
+  renderSyncUrlUI();
 
   // Render profile cards. "Perfil B" fica escondido enquanto não tiver nome
   // nem foto — evita a sensação de ser obrigatório num app de uma pessoa só.
@@ -2955,6 +3034,15 @@ function renderSettings(){
   const devPanel = document.getElementById('devModePanel');
   if(devPanel) devPanel.style.display = (localSettings && localSettings.devMode) ? '' : 'none';
   renderSyncLog();
+
+  const encSw = document.getElementById('encryptionSwitch');
+  if(encSw) encSw.classList.toggle('on', !!encryptionEnabled);
+  const encRow = document.getElementById('encryptionPasswordRow');
+  if(encRow) encRow.style.display = encryptionEnabled ? 'block' : 'none';
+  const bioSw = document.getElementById('biometricSwitch');
+  if(bioSw) bioSw.classList.toggle('on', !!biometricUnlockEnabled);
+  const reqSw = document.getElementById('requireUnlockSwitch');
+  if(reqSw) reqSw.classList.toggle('on', !!requireUnlockEachSync);
 }
 
 let profileNameTimer = null;
@@ -2966,8 +3054,8 @@ function openEditProfileSheet(key){
   const destructiveBtn = key === 'a'
     ? ''
     : key === 'b'
-      ? `<button class="btn btn-ghost" style="color:var(--terracotta);" onclick="clearProfileB()">Remover perfil B</button>`
-      : `<button class="btn btn-ghost" style="color:var(--terracotta);" onclick="deleteProfile('${key}')">Excluir perfil</button>`;
+      ? `<button class="btn btn-ghost" style="color:var(--terracotta);" onclick="confirmClearProfileB()">Remover perfil B</button>`
+      : `<button class="btn btn-ghost" style="color:var(--terracotta);" onclick="confirmDeleteProfile('${key}')">Excluir perfil</button>`;
   openSheet(`
     ${sheetHeader(`Editar perfil`)}
     <div style="display:flex; justify-content:center; margin-bottom:18px;">
@@ -3051,6 +3139,198 @@ async function clearSyncLog(){
   renderSyncLog();
   showToast('Log limpo');
 }
+
+// ---------------------------------------------------------------
+// ENCRIPTAÇÃO OPCIONAL DO PAYLOAD SINCRONIZADO (Modo Dev — portado do Corrida+)
+// AES-GCM 256 bits via Web Crypto API nativa do browser. A senha nunca é
+// enviada; só a chave derivada localmente (PBKDF2) é usada para cifrar/
+// decifrar. Sem a senha certa, o conteúdo da célula na planilha é ilegível.
+// ---------------------------------------------------------------
+async function deriveKeyFromPassword(password, saltBytes){
+  const enc = new TextEncoder();
+  const keyMaterial = await crypto.subtle.importKey('raw', enc.encode(password), { name: 'PBKDF2' }, false, ['deriveKey']);
+  return crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt: saltBytes, iterations: 100000, hash: 'SHA-256' },
+    keyMaterial, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']
+  );
+}
+function bufToBase64(buf){ return btoa(String.fromCharCode(...new Uint8Array(buf))); }
+function base64ToBuf(b64){
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+async function encryptPayload(obj, password){
+  const enc = new TextEncoder();
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv   = crypto.getRandomValues(new Uint8Array(12));
+  const key  = await deriveKeyFromPassword(password, salt);
+  const plaintext = enc.encode(JSON.stringify(obj));
+  const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, plaintext);
+  return { encrypted: true, salt: bufToBase64(salt), iv: bufToBase64(iv), data: bufToBase64(ciphertext) };
+}
+async function decryptPayload(envelope, password){
+  const dec = new TextDecoder();
+  const salt = base64ToBuf(envelope.salt);
+  const iv   = base64ToBuf(envelope.iv);
+  const key  = await deriveKeyFromPassword(password, salt);
+  const ciphertext = base64ToBuf(envelope.data);
+  const plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertext);
+  return JSON.parse(dec.decode(plaintext));
+}
+
+function toggleEncryption(){
+  encryptionEnabled = !encryptionEnabled;
+  if(encryptionEnabled && !encryptionPassword){
+    const pwd = prompt('Defina uma senha para encriptar os dados sincronizados:\n(Guarde-a bem — sem ela, não há como decifrar os dados na planilha.)');
+    if(!pwd){ encryptionEnabled = false; renderSettings(); return; }
+    encryptionPassword = pwd;
+  }
+  window.storage.set('encryptionEnabled', encryptionEnabled).catch(()=>{});
+  window.storage.set('encryptionPassword', encryptionPassword).catch(()=>{});
+  renderSettings();
+  showToast(encryptionEnabled ? '🔒 Encriptação ativada' : '🔓 Encriptação desativada');
+  pushToCloud();
+}
+function changeEncryptionPassword(){
+  const pwd = prompt('Nova senha de encriptação:\n(Isto vai re-encriptar os dados na próxima sincronização.)');
+  if(!pwd) return;
+  encryptionPassword = pwd;
+  window.storage.set('encryptionPassword', encryptionPassword).catch(()=>{});
+  showToast('🔑 Senha atualizada');
+  pushToCloud();
+}
+
+// ---------------------------------------------------------------
+// DESBLOQUEIO BIOMÉTRICO (Face ID / digital) via WebAuthn — portado do Corrida+.
+// A biometria nunca sai do dispositivo; só libera a senha já guardada localmente.
+// ---------------------------------------------------------------
+function webAuthnSupported(){
+  return typeof window !== 'undefined' && window.PublicKeyCredential && typeof navigator.credentials?.create === 'function';
+}
+async function toggleBiometricUnlock(){
+  if(!webAuthnSupported()){
+    showToast('❌ Biometria não suportada neste dispositivo/navegador');
+    return;
+  }
+  if(!encryptionPassword){ showToast('Defina primeiro uma senha de encriptação'); return; }
+  if(biometricUnlockEnabled){
+    biometricUnlockEnabled = false;
+    try{ await window.storage.set('biometricUnlockEnabled', false); }catch(e){}
+    try{ await window.storage.delete('biometricCredentialId'); }catch(e){}
+    renderSettings();
+    showToast('Desbloqueio biométrico desativado');
+    return;
+  }
+  try{
+    const challenge = crypto.getRandomValues(new Uint8Array(32));
+    const userId = crypto.getRandomValues(new Uint8Array(16));
+    const credential = await navigator.credentials.create({
+      publicKey: {
+        challenge,
+        rp: { name: 'Dueto' },
+        user: { id: userId, name: 'dueto-user', displayName: 'Dueto' },
+        pubKeyCredParams: [{ alg: -7, type: 'public-key' }],
+        authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required' },
+        timeout: 60000
+      }
+    });
+    if(!credential) throw new Error('Credencial não criada');
+    const credId = bufToBase64(credential.rawId);
+    await window.storage.set('biometricCredentialId', credId);
+    biometricUnlockEnabled = true;
+    await window.storage.set('biometricUnlockEnabled', true);
+    renderSettings();
+    showToast('✅ Desbloqueio biométrico ativado');
+  }catch(e){
+    console.warn('Falha ao registar biometria:', e);
+    showToast('❌ Não foi possível ativar a biometria (cancelado ou não suportado)');
+  }
+}
+async function toggleRequireUnlockEachSync(){
+  requireUnlockEachSync = !requireUnlockEachSync;
+  try{ await window.storage.set('requireUnlockEachSync', requireUnlockEachSync); }catch(e){}
+  renderSettings();
+  showToast(requireUnlockEachSync ? '🔒 Vai pedir confirmação a cada sincronização' : '🔓 Decifra automaticamente em segundo plano');
+}
+async function verifyBiometricAndGetPassword(){
+  if(!biometricUnlockEnabled || !webAuthnSupported()) return encryptionPassword;
+  try{
+    const stored = await window.storage.get('biometricCredentialId');
+    const credId = stored?.value;
+    if(!credId) return encryptionPassword;
+    const challenge = crypto.getRandomValues(new Uint8Array(32));
+    await navigator.credentials.get({
+      publicKey: { challenge, allowCredentials: [{ id: base64ToBuf(credId), type: 'public-key' }], userVerification: 'required', timeout: 60000 }
+    });
+    return encryptionPassword;
+  }catch(e){
+    showToast('❌ Verificação biométrica falhou ou foi cancelada');
+    throw e;
+  }
+}
+
+function openUnlockSheet(){
+  const canBio = biometricUnlockEnabled && webAuthnSupported();
+  if(canBio){ triggerBiometricUnlockDirectly(); return; }
+  openUnlockPasswordSheet();
+}
+async function triggerBiometricUnlockDirectly(){
+  const envelope = pendingEncryptedPayload;
+  if(!envelope) return;
+  try{
+    const pwd = await verifyBiometricAndGetPassword();
+    const decoded = await decryptPayload(envelope, pwd);
+    pendingEncryptedPayload = null;
+    await finishCloudSync(decoded, pendingManualSync);
+  }catch(e){
+    openUnlockPasswordSheet(true);
+  }
+}
+function openUnlockPasswordSheet(biometricFailed){
+  openSheet(`
+    ${sheetHeader('🔒 Dados encriptados')}
+    <div class="sheet-sub">${biometricFailed ? 'Não foi possível usar a biometria. Confirme com a senha para continuar.' : 'Confirme a senha para decifrar e sincronizar os seus dados.'}</div>
+    <div class="field"><label>Senha de encriptação</label><input type="password" id="unlockPasswordInput" placeholder="Digite a senha" onkeydown="if(event.key==='Enter') unlockWithPassword()" /></div>
+    <button class="btn btn-primary" onclick="unlockWithPassword()">Desbloquear com senha</button>
+    ${biometricUnlockEnabled && webAuthnSupported() ? `<button class="btn btn-ghost" onclick="triggerBiometricUnlockDirectly(); closeSheet();">👤 Tentar biometria de novo</button>` : ''}
+    <button class="btn btn-ghost" onclick="cancelUnlock()">Cancelar</button>
+  `);
+  setTimeout(()=>{ document.getElementById('unlockPasswordInput')?.focus(); }, 200);
+}
+function cancelUnlock(){
+  pendingEncryptedPayload = null;
+  closeSheet();
+  setSyncStatus('nolink');
+  showToast('Sincronização cancelada');
+}
+async function unlockWithPassword(){
+  const input = document.getElementById('unlockPasswordInput');
+  const pwd = input ? input.value : '';
+  if(!pwd){ showToast('Digite a senha'); return; }
+  const envelope = pendingEncryptedPayload;
+  if(!envelope){ closeSheet(); return; }
+  try{
+    const decoded = await decryptPayload(envelope, pwd);
+    encryptionPassword = pwd;
+    try{ await window.storage.set('encryptionPassword', encryptionPassword); }catch(e){}
+    pendingEncryptedPayload = null;
+    closeSheet();
+    await finishCloudSync(decoded, pendingManualSync);
+  }catch(e){
+    showToast('❌ Senha incorreta');
+    if(input) input.style.borderColor = 'var(--terracotta)';
+  }
+}
+async function finishCloudSync(decoded, manual){
+  applyCloudData(decoded);
+  await persistLocalOnlySilently();
+  setSyncStatus('synced');
+  if(manual) showToast('✅ Sincronizado com sucesso');
+  renderAll(); renderMonth(); renderProfileSwitcher();
+}
+
 function updateProfileName(key, value){
   if(key === 'a'){ names.a = value; }
   else if(key === 'b'){ names.b = value; }
@@ -3177,13 +3457,20 @@ async function addProfile(){
   showToast('Perfil adicionado');
 }
 
-async function clearProfileB(){
+function confirmClearProfileB(){
   const bVaults = vaults.filter(v => v.ownerId === 'b').length;
   const bBills  = bills.filter(b => b.ownerId === 'b').length;
   const dataWarning = (bVaults || bBills)
-    ? ` Ele tem ${bVaults} cofre(s) e ${bBills} despesa(s) pessoais — eles não serão apagados, só ficam escondidos até você colocar o nome de volta.`
-    : '';
-  if(!confirm(`Remover o Perfil B?${dataWarning}`)) return;
+    ? `Ele tem ${bVaults} cofre(s) e ${bBills} despesa(s) pessoais — eles não serão apagados, só ficam escondidos até você colocar o nome de volta.`
+    : 'Essa ação não pode ser desfeita.';
+  openSheet(`
+    ${sheetHeader('Remover Perfil B?')}
+    <div class="sheet-sub">${dataWarning}</div>
+    <button class="btn btn-primary danger" onclick="clearProfileB()">Remover perfil B</button>
+    <button class="btn btn-ghost" onclick="openEditProfileSheet('b')">Cancelar</button>
+  `);
+}
+async function clearProfileB(){
   names.b = '';
   names.photoB = null;
   window._forceShowProfileB = false;
@@ -3195,8 +3482,16 @@ async function clearProfileB(){
   renderAll(); renderMonth();
   showToast('Perfil B removido');
 }
+function confirmDeleteProfile(key){
+  const p = getProfiles().find(x => x.key === key);
+  openSheet(`
+    ${sheetHeader('Excluir perfil?')}
+    <div class="sheet-sub">Excluir "${escapeHtml(p ? p.name : 'este perfil')}"? Essa ação não pode ser desfeita.</div>
+    <button class="btn btn-primary danger" onclick="deleteProfile('${key}')">Excluir perfil</button>
+    <button class="btn btn-ghost" onclick="openEditProfileSheet('${key}')">Cancelar</button>
+  `);
+}
 async function deleteProfile(key){
-  if(!confirm('Excluir este perfil?')) return;
   appSettings.extraProfiles = (appSettings.extraProfiles || []).filter(p => p.key !== key);
   await persistAppSettings();
   closeSheet();
@@ -3236,6 +3531,32 @@ function saveSyncUrl(){
     setSyncStatus(syncUrl ? 'synced' : 'nolink');
     showToast(syncUrl ? 'URL de sincronização salva' : 'Sincronização com a nuvem desativada');
   }, 500);
+}
+function unlockSyncUrl(){
+  document.getElementById('syncUrlLockedView').style.display = 'none';
+  document.getElementById('syncUrlEditView').style.display   = 'block';
+  const input = document.getElementById('syncUrl');
+  if(input){ input.value = syncUrl || ''; input.focus(); }
+}
+function lockSyncUrl(){
+  const input = document.getElementById('syncUrl');
+  if(input) syncUrl = input.value.trim();
+  saveSyncUrl();
+  renderSyncUrlUI();
+}
+function renderSyncUrlUI(){
+  const locked = document.getElementById('syncUrlLockedView');
+  const edit   = document.getElementById('syncUrlEditView');
+  const masked = document.getElementById('syncUrlMasked');
+  if(!locked || !edit) return;
+  if(syncUrl){
+    locked.style.display = 'flex';
+    edit.style.display   = 'none';
+    if(masked) masked.textContent = syncUrl.length > 50 ? syncUrl.slice(0,30) + '…' + syncUrl.slice(-15) : syncUrl;
+  } else {
+    locked.style.display = 'none';
+    edit.style.display   = 'block';
+  }
 }
 async function confirmResetAll(){
   if(!confirm('Isso vai apagar TODOS os dados. Tem certeza?')) return;
