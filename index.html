@@ -2114,7 +2114,7 @@ if (!window.storage) {
 // Exibida em Configurações → Desenvolvedor → "Dueto vX.X.X"
 // Formato: MAJOR.MINOR.PATCH  — ex: 2.1.0 → 2.1.1 (bugfix) ou 2.2.0 (feature)
 // ================================================================
-const APP_VERSION = '3.2.4';  // last updated: 2026-07-14 — fix: desfazer pagamento de despesa agora identifica a transação certa por ID, não pelo texto da nota — corrige bug ao ter dois empréstimos entre cofres com o mesmo valor
+const APP_VERSION = '3.2.5';  // last updated: 2026-07-14 — fix: seletor "Ver cofres e contas de" agora atualiza sempre que Configurações é renderizada, corrigindo aviso de "dê um nome" preso mesmo com perfil já nomeado
 
 // Dev Mode — Force reload bypassing all browser cache so device gets latest version.
 // Shows current version before reloading so the user can see if it changed.
@@ -2658,6 +2658,7 @@ function goMonth(){
 function goSettings(){
   showScreen('screen-settings'); activateTab('tabSettings');
   renderSettings();
+  renderProfileSwitcher();
 }
 function goForecast(){
   showScreen('screen-forecast'); activateTab(null);
@@ -2997,6 +2998,7 @@ function personAvatarInner(key, label){
 function renderSettings(){
   document.getElementById('syncUrl').value = syncUrl || '';
   renderSyncUrlUI();
+  renderProfileSwitcher();
 
   // Render profile cards. "Perfil B" fica escondido enquanto não tiver nome
   // nem foto — evita a sensação de ser obrigatório num app de uma pessoa só.
