@@ -2138,7 +2138,7 @@ if (!window.storage) {
 // Exibida em Configurações → Desenvolvedor → "Dueto vX.X.X"
 // Formato: MAJOR.MINOR.PATCH  — ex: 2.1.0 → 2.1.1 (bugfix) ou 2.2.0 (feature)
 // ================================================================
-const APP_VERSION = '3.4.0';  // last updated: 2026-07-14 — fix: distribuir metas já marca como paga (evita duplicar); excluir cofre/despesa usa confirmação própria em vez de confirm() nativo; ícone selecionado e campo de valor visíveis no modo escuro; added: cofre mostra de onde veio o dinheiro (conta/físico/vale); distribuir metas prioriza conta bancária
+const APP_VERSION = '3.5.0';  // last updated: 2026-07-14 — added: antes de cada envio à nuvem, busca a versão mais recente e mescla por ID (soma o que outro aparelho adicionou), reduzindo o risco de sobrescrever dados novos com uma versão desatualizada
 
 // Dev Mode — Force reload bypassing all browser cache so device gets latest version.
 // Shows current version before reloading so the user can see if it changed.
@@ -2627,8 +2627,60 @@ function scheduleCloudPush(){
   syncPushTimer = setTimeout(pushToCloud, SYNC_DEBOUNCE_MS);
 }
 
+// Une por ID: qualquer item que exista na nuvem mas não localmente (ou seja,
+// foi adicionado em outro aparelho desde a última sincronização deste) é
+// incorporado ao estado local antes de enviar. Itens que já existem local
+// (mesmo ID) NÃO são sobrescritos pela versão da nuvem — a edição feita
+// agora, neste aparelho, é considerada a mais recente pra esse item.
+function mergeArrayAdditionsById(localArr, cloudArr){
+  if(!Array.isArray(cloudArr) || cloudArr.length === 0) return localArr;
+  const localIds = new Set(localArr.map(x => x && x.id));
+  const additions = cloudArr.filter(x => x && x.id && !localIds.has(x.id));
+  return additions.length ? [...localArr, ...additions] : localArr;
+}
+// Pull-before-push: busca o estado mais atual da nuvem e mescla por ID antes
+// de montar o payload — assim, editar aqui não apaga sem querer algo que
+// outra pessoa adicionou em outro aparelho enquanto este ficou sem sincronizar.
+// Limitação conhecida: campos de valor simples (ex: renda, nomes) não têm
+// como saber "qual é mais novo" sem um timestamp por campo — nesses casos
+// continua valendo a versão deste aparelho.
+async function pullAndMergeBeforePush(){
+  if(!syncUrl) return;
+  try{
+    const res = await fetch(syncUrl, { method: 'GET' });
+    if(!res.ok) return;
+    const cloud = await res.json();
+    if(!cloud || typeof cloud !== 'object' || cloud.encrypted === true) return; // não decifra aqui — segue com o local
+
+    vaults = mergeArrayAdditionsById(vaults, cloud.vaults);
+    txns   = mergeArrayAdditionsById(txns,   cloud.txns);
+    loans  = mergeArrayAdditionsById(loans,  cloud.loans);
+    bills  = mergeArrayAdditionsById(bills,  cloud.bills);
+
+    if(cloud.monthData && typeof cloud.monthData === 'object'){
+      Object.keys(cloud.monthData).forEach(mk => {
+        const cloudEntry = cloud.monthData[mk];
+        if(!cloudEntry) return;
+        const localEntry = ensureMonthEntry(mk);
+        ['billsPaid','billOverrides','hiddenBills'].forEach(field => {
+          if(cloudEntry[field] && typeof cloudEntry[field] === 'object'){
+            Object.keys(cloudEntry[field]).forEach(k => {
+              if(!(k in localEntry[field])) localEntry[field][k] = cloudEntry[field][k];
+            });
+          }
+        });
+      });
+    }
+    logSyncEvent('info', 'Mesclado com a nuvem antes de enviar', 'novos itens de outro aparelho incorporados, se houver');
+  }catch(e){
+    // Sem internet ou planilha indisponível agora — segue só com o que já tem localmente.
+    logSyncEvent('info', 'Não foi possível buscar antes de enviar — enviando só com dados locais', e.message || String(e));
+  }
+}
+
 async function pushToCloud(){
   if(!syncUrl) return;
+  await pullAndMergeBeforePush();
   const payload = buildCloudPayload();
   let body;
   try{
