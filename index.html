@@ -803,6 +803,24 @@ body {
   margin-top: 4px;
 }
 
+.source-breakdown {
+  display: flex; justify-content: center; gap: 8px;
+  margin: 14px 0 4px;
+  flex-wrap: wrap;
+}
+.source-breakdown-item {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 8px 12px;
+  text-align: center;
+  min-width: 84px;
+}
+.source-breakdown-emoji { font-size: 16px; }
+.source-breakdown-label { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+.source-breakdown-value { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 13px; margin-top: 1px; }
+body.dark .source-breakdown-item { background: #252530; border-color: rgba(255,255,255,0.1); }
+
 .action-row { display: flex; gap: 10px; padding: 0 0 22px; }
 .action-btn {
   flex: 1;
@@ -1348,6 +1366,9 @@ body.dark .add-dashed-btn,
 body.dark .emoji-pick,
 body.dark .loan-pay-btn,
 body.dark .loan-mini-btn { background: #2A2A31; color: var(--ink); border-color: rgba(255,255,255,0.13); }
+body.dark .emoji-pick.selected { background: rgba(217,169,73,0.18); border-color: var(--brass-light); }
+body.dark .split-row input { background: #1C1C23; color: var(--ink); border-color: rgba(255,255,255,0.14); }
+body.dark .split-row .field-money::before { color: rgba(230,225,215,0.45); }
 
 /* photo btn */
 body.dark .photo-btn { background: #1E1E24; color: var(--ink); border-color: rgba(255,255,255,0.12); }
@@ -1656,6 +1677,7 @@ body.dark .loan-progress-bg { background: rgba(255,255,255,0.14); }
     </div>
 
     <div class="vault-count section-sub" id="vaultCount"></div>
+    <div id="homeDistributeLeftover"></div>
     <div class="vaults" id="vaultsList"></div>
 
     <div class="add-dashed-btn" onclick="openNewVaultSheet()">
@@ -1684,6 +1706,8 @@ body.dark .loan-progress-bg { background: rgba(255,255,255,0.14); }
       <div class="detail-balance-label" id="detailBalanceLabel">saldo disponível</div>
     </div>
 
+    <div id="detailSourceBreakdown"></div>
+
     <div class="action-row">
       <div class="action-btn" onclick="openMoveSheet('deposito')"><span class="ic">⬇️</span>Guardar</div>
       <div class="action-btn" onclick="openMoveSheet('retirada')"><span class="ic">⬆️</span>Retirar</div>
@@ -1704,7 +1728,7 @@ body.dark .loan-progress-bg { background: rgba(255,255,255,0.14); }
     <div class="activity" id="detailActivity"></div>
 
     <div style="margin-top:24px;">
-      <button class="btn btn-danger-text" onclick="confirmDeleteVault()">Excluir este cofre</button>
+      <button class="btn btn-danger-text" onclick="confirmDeleteVaultSheet()">Excluir este cofre</button>
     </div>
   </div>
 
@@ -2114,7 +2138,7 @@ if (!window.storage) {
 // Exibida em Configurações → Desenvolvedor → "Dueto vX.X.X"
 // Formato: MAJOR.MINOR.PATCH  — ex: 2.1.0 → 2.1.1 (bugfix) ou 2.2.0 (feature)
 // ================================================================
-const APP_VERSION = '3.2.5';  // last updated: 2026-07-14 — fix: seletor "Ver cofres e contas de" agora atualiza sempre que Configurações é renderizada, corrigindo aviso de "dê um nome" preso mesmo com perfil já nomeado
+const APP_VERSION = '3.4.0';  // last updated: 2026-07-14 — fix: distribuir metas já marca como paga (evita duplicar); excluir cofre/despesa usa confirmação própria em vez de confirm() nativo; ícone selecionado e campo de valor visíveis no modo escuro; added: cofre mostra de onde veio o dinheiro (conta/físico/vale); distribuir metas prioriza conta bancária
 
 // Dev Mode — Force reload bypassing all browser cache so device gets latest version.
 // Shows current version before reloading so the user can see if it changed.
@@ -2292,6 +2316,46 @@ const fmt = (n) => {
   return '€ ' + (rounded === 0 ? 0 : rounded).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
 };
 function round2(n){ return Math.round((n + Number.EPSILON) * 100) / 100; }
+
+// Rastreia de qual "origem" (dinheiro físico, vale-alimentação, conta
+// bancária) veio o saldo que está guardado em cada cofre — mostrado no
+// detalhe do cofre. Quando sabemos a origem exata (ex: pagamento de despesa
+// já dividido por fonte), somamos direto. Quando não sabemos com certeza
+// (ex: retirada, transferência entre cofres), removemos proporcionalmente
+// à composição atual do cofre, mantendo a mistura sempre coerente.
+function ensureVaultSources(v){
+  if(!v.sourceBalance) v.sourceBalance = { fisico:0, vale:0, conta:0 };
+  return v.sourceBalance;
+}
+function addVaultSource(v, source, amount){
+  if(!amount) return;
+  const sb = ensureVaultSources(v);
+  sb[source] = round2((sb[source]||0) + amount);
+}
+function addVaultSourceSplit(v, split){
+  ['fisico','vale','conta'].forEach(k => addVaultSource(v, k, split[k]||0));
+}
+function removeVaultSourceProportional(v, amount){
+  const sb = ensureVaultSources(v);
+  const total = (sb.fisico||0) + (sb.vale||0) + (sb.conta||0);
+  if(total <= 0 || amount <= 0) return;
+  const factor = Math.min(1, amount / total);
+  ['fisico','vale','conta'].forEach(k => { sb[k] = round2(Math.max(0, (sb[k]||0) - (sb[k]||0)*factor)); });
+}
+// Move a mesma "cor" de dinheiro de um cofre para outro (usado em
+// transferências e empréstimos entre cofres) — tira proporcionalmente do
+// cofre de origem e soma exatamente essa mesma composição no destino.
+function moveVaultSourceProportional(fromVault, toVault, amount){
+  const sb = ensureVaultSources(fromVault);
+  const total = (sb.fisico||0) + (sb.vale||0) + (sb.conta||0);
+  if(total <= 0 || amount <= 0){ addVaultSource(toVault, 'conta', amount); return; }
+  const factor = Math.min(1, amount / total);
+  ['fisico','vale','conta'].forEach(k => {
+    const moved = round2((sb[k]||0) * factor);
+    sb[k] = round2(Math.max(0, (sb[k]||0) - moved));
+    addVaultSource(toVault, k, moved);
+  });
+}
 function uid(){ return Math.random().toString(36).slice(2,10) + Date.now().toString(36); }
 
 // ---------------------------------------------------------------
@@ -2821,6 +2885,20 @@ function renderAll(){
   const list = document.getElementById('vaultsList');
   document.getElementById('vaultCount').textContent = scopedVaults.length + (scopedVaults.length===1?' cofre':' cofres');
 
+  const distEl = document.getElementById('homeDistributeLeftover');
+  if(distEl){
+    const scope = currentScope();
+    const vaultsPending = scopedVaults.filter(v => v.goal && v.balance < v.goal);
+    let liquidLeftover = 0;
+    if(scope === 'casa'){
+      const monthEntry = ensureMonthEntry(currentMonthKey);
+      liquidLeftover = remainingBySource(monthEntry, 'fisico') + remainingBySource(monthEntry, 'conta');
+    }
+    distEl.innerHTML = (scope === 'casa' && liquidLeftover > 0 && vaultsPending.length > 0)
+      ? `<div class="add-dashed-btn" style="border-style:solid; background:rgba(184,134,43,0.08); border-color:rgba(184,134,43,0.35); color:var(--brass); margin-bottom:14px;" onclick="autoDistributeLeftover()">✨ Distribuir ${fmt(liquidLeftover)} de sobra pelas metas</div>`
+      : '';
+  }
+
   if(scopedVaults.length === 0){
     list.innerHTML = `<div class="empty-note">Nenhum cofre ${currentScope()==='casa' ? 'da casa' : 'pessoal'} ainda. Crie o primeiro.</div>`;
   } else {
@@ -2909,6 +2987,25 @@ function renderDetail(){
   document.getElementById('detailName').textContent = v.name;
   document.getElementById('detailBalance').textContent = fmt(v.balance);
   document.getElementById('detailBalance').className = 'detail-balance' + (v.balance<0?' negative':'');
+
+  const sb = ensureVaultSources(v);
+  const breakdownEl = document.getElementById('detailSourceBreakdown');
+  if(breakdownEl){
+    const items = [
+      { key:'conta',  label:'Conta bancária',   emoji:'🏦', value: sb.conta  || 0 },
+      { key:'fisico', label:'Dinheiro físico',  emoji:'💵', value: sb.fisico || 0 },
+      { key:'vale',   label:'Vale-alimentação', emoji:'🍽️', value: sb.vale   || 0 },
+    ].filter(it => Math.abs(it.value) > 0.004);
+    breakdownEl.innerHTML = items.length ? `
+      <div class="source-breakdown">
+        ${items.map(it => `
+          <div class="source-breakdown-item">
+            <div class="source-breakdown-emoji">${it.emoji}</div>
+            <div class="source-breakdown-label">${it.label}</div>
+            <div class="source-breakdown-value">${fmt(it.value)}</div>
+          </div>`).join('')}
+      </div>` : '';
+  }
 
   const vaultLoans      = loans.filter(l=>l.vaultId===v.id && l.remaining > 0);
   const realCurrentMonth = defaultReferenceMonthKey();
@@ -3936,9 +4033,14 @@ function openEditVaultSheet(vaultId){
   window._pendingVaultEditId = v.id;
   openSheet(`
     ${sheetHeader(`Editar cofre`)}
-    <div class="sheet-sub">Altere o nome e o símbolo deste cofre.</div>
+    <div class="sheet-sub">Altere o nome, o símbolo e a meta deste cofre.</div>
     <div class="field"><label>Nome do cofre</label><input type="text" id="editVaultName" value="${escapeHtml(v.name)}" maxlength="30" /></div>
     <div class="field"><label>Símbolo</label><div class="emoji-grid" id="emojiGrid"></div></div>
+    <div class="field">
+      <label>Meta (opcional)</label>
+      <div class="field-money"><input type="number" id="editVaultGoal" placeholder="0,00" inputmode="decimal" value="${v.goal ? v.goal : ''}" /></div>
+    </div>
+    ${v.goal ? `<button class="btn btn-ghost" style="color:var(--terracotta);" onclick="disableVaultGoal()">Desativar meta deste cofre</button>` : ''}
     <button class="btn btn-primary" onclick="saveVaultEdit()">Salvar</button>
     <button class="btn btn-ghost" onclick="closeSheet()">Cancelar</button>
   `);
@@ -3949,8 +4051,20 @@ async function saveVaultEdit(){
   const v = vaults.find(x => x.id === vaultId); if(!v) return;
   const name = document.getElementById('editVaultName').value.trim();
   if(!name){ showToast('Dê um nome ao cofre'); return; }
+  const goalRaw = document.getElementById('editVaultGoal').value;
   v.name = name; v.emoji = pendingEmoji;
+  v.goal = goalRaw ? parseFloat(goalRaw) : null;
   await persistVaults(); closeSheet(); renderDetail(); renderAll(); showToast('Cofre atualizado');
+}
+// Desliga a meta manualmente — a única forma de uma meta sumir é o próprio
+// usuário decidir isso aqui; o app nunca desativa nada sozinho (por exemplo,
+// ao bater a meta o cofre só some das listas de "precisa guardar", a meta
+// em si continua ativa até ser desligada explicitamente por aqui).
+async function disableVaultGoal(){
+  const vaultId = window._pendingVaultEditId;
+  const v = vaults.find(x => x.id === vaultId); if(!v) return;
+  v.goal = null;
+  await persistVaults(); closeSheet(); renderDetail(); renderAll(); showToast('Meta desativada');
 }
 function pickEmoji(e){
   pendingEmoji = e;
@@ -3965,6 +4079,7 @@ async function createVault(){
   const balance = balanceRaw ? parseFloat(balanceRaw) : 0;
   const ownerId = currentScope() === 'casa' ? null : currentScope();
   const v = { id: uid(), name, emoji: pendingEmoji, balance, goal, createdAt: Date.now(), ownerId };
+  if(balance > 0) addVaultSource(v, 'conta', balance);
   vaults.push(v); await persistVaults();
   if(balance > 0){ txns.push({ id: uid(), vaultId: v.id, type:'deposito', amount: balance, note:'Saldo inicial', ts: Date.now() }); await persistTxns(); }
   closeSheet(); showToast('Cofre "' + name + '" criado'); goHome();
@@ -3976,10 +4091,19 @@ function openMoveSheet(type){
   let title, sub, btnLabel, btnClass='';
   if(type==='deposito'){ title='Guardar dinheiro'; sub=`Adicionar valor ao cofre "${v.name}".`; btnLabel='Guardar'; }
   if(type==='retirada'){ title='Retirar dinheiro'; sub=`Tirar valor do cofre "${v.name}" — sem precisar devolver.`; btnLabel='Retirar'; btnClass='danger'; }
+  const sourceField = type === 'deposito' ? `
+    <div class="field"><label>De onde vem esse dinheiro?</label>
+      <select id="moveSource">
+        <option value="conta">🏦 Conta bancária</option>
+        <option value="fisico">💵 Dinheiro físico</option>
+        <option value="vale">🍽️ Vale-alimentação</option>
+      </select>
+    </div>` : '';
   openSheet(`
     ${sheetHeader(`${title}`)}
     <div class="sheet-sub">${sub}</div>
     <div class="field"><label>Valor</label><div class="field-money"><input type="number" id="moveAmount" placeholder="0,00" inputmode="decimal" autofocus /></div></div>
+    ${sourceField}
     <div class="field"><label>Nota (opcional)</label><input type="text" id="moveNote" placeholder="ex: economia do mês" maxlength="60" /></div>
     <button class="btn btn-primary ${btnClass}" onclick="confirmMove('${type}')">${btnLabel}</button>
     <button class="btn btn-ghost" onclick="closeSheet()">Cancelar</button>
@@ -3991,7 +4115,14 @@ async function confirmMove(type){
   const note   = document.getElementById('moveNote').value.trim();
   if(!amount || amount <= 0){ showToast('Digite um valor válido'); return; }
   if(type === 'retirada' && amount > v.balance){ if(!confirm('O cofre vai ficar negativo. Continuar?')) return; }
-  v.balance = round2(v.balance + (type === 'deposito' ? amount : -amount)); await persistVaults();
+  v.balance = round2(v.balance + (type === 'deposito' ? amount : -amount));
+  if(type === 'deposito'){
+    const source = document.getElementById('moveSource').value;
+    addVaultSource(v, source, amount);
+  } else {
+    removeVaultSourceProportional(v, amount);
+  }
+  await persistVaults();
   txns.push({ id: uid(), vaultId: v.id, type, amount, note, ts: Date.now() }); await persistTxns();
   closeSheet(); showToast(type==='deposito' ? 'Guardado!' : 'Retirado.'); renderDetail(); renderAll();
 }
@@ -4056,8 +4187,11 @@ async function confirmTransfer(){
     const destVault = vaults.find(x=>x.id===destination);
     if(destVault){
       destVault.balance = round2(destVault.balance + amount);
+      moveVaultSourceProportional(v, destVault, amount);
       txns.push({ id: uid(), vaultId: destVault.id, type:'deposito', amount, note: note || `Transferência de ${escapeHtml(v.name)}`, ts: Date.now() });
     }
+  } else {
+    removeVaultSourceProportional(v, amount);
   }
   txns.push({ id: uid(), vaultId: v.id, type:'retirada', amount, note: note || `Envio para ${destination === 'conta' ? 'conta corrente' : 'dinheiro'}`, ts: Date.now() });
   // Fix: When sending back to conta principal, register in month's vaultTransfers so the
@@ -4110,6 +4244,7 @@ async function confirmVaultLoan(){
 
   v.balance    = round2(v.balance - amount);
   dest.balance = round2(dest.balance + amount);
+  moveVaultSourceProportional(v, dest, amount);
   await persistVaults();
 
   const now = Date.now();
@@ -4193,7 +4328,7 @@ async function confirmLoan(){
     startKey = monthKeyFor(new Date(y, m - 1 + offset, 1));
   }
 
-  v.balance = round2(v.balance - amount); await persistVaults();
+  v.balance = round2(v.balance - amount); removeVaultSourceProportional(v, amount); await persistVaults();
   const loan = { id: uid(), vaultId: v.id, total: amount, remaining: amount, installments: n, paidInstallments: 0, startMonthKey: startKey, who: whoSelection, note, ts: Date.now() };
   loans.push(loan); await persistLoans();
   txns.push({ id: uid(), vaultId: v.id, type:'emprestimo', amount, note: note || `Empréstimo em ${n}x`, who: whoSelection, ts: Date.now(), loanId: loan.id }); await persistTxns();
@@ -4326,6 +4461,7 @@ async function confirmPayInstallment(loanId){
     const targetVault = vaults.find(v=>v.id===destination);
     if(targetVault){
       targetVault.balance = round2(targetVault.balance + amount);
+      addVaultSource(targetVault, 'conta', amount);
       txns.push({ id: uid(), vaultId: targetVault.id, type:'pagamento', amount, note:`Parcela ${loan.paidInstallments}/${loan.installments} (destino: ${escapeHtml(targetVault.name)})`, who: paymentWho, ts: Date.now(), loanId: loan.id });
       await persistVaults(); await persistTxns();
     }
@@ -4388,6 +4524,7 @@ async function confirmAdvancePayment(loanId){
     const targetVault = vaults.find(v=>v.id===destination);
     if(targetVault){
       targetVault.balance = round2(targetVault.balance + amount);
+      addVaultSource(targetVault, 'conta', amount);
       txns.push({ id: uid(), vaultId: targetVault.id, type:'pagamento', amount, note:`Adiantamento (destino: ${escapeHtml(targetVault.name)})`, who: paymentWho, ts: Date.now(), loanId: loan.id });
       await persistVaults(); await persistTxns();
     }
@@ -4403,13 +4540,22 @@ async function confirmAdvancePayment(loanId){
   renderLoans(); renderDetail(); renderAll();
 }
 
-async function confirmDeleteVault(){
-  const v = vaults.find(x=>x.id===currentVaultId);
-  if(!v || !confirm(`Excluir o cofre "${v.name}"? O histórico dele também será removido.`)) return;
+function confirmDeleteVaultSheet(){
+  const v = vaults.find(x=>x.id===currentVaultId); if(!v) return;
+  openSheet(`
+    ${sheetHeader('Excluir cofre?')}
+    <div class="sheet-sub">Excluir "${escapeHtml(v.name)}"? O histórico dele também será removido. Essa ação não pode ser desfeita.</div>
+    <button class="btn btn-primary danger" onclick="deleteVaultConfirmed()">Excluir cofre</button>
+    <button class="btn btn-ghost" onclick="closeSheet()">Cancelar</button>
+  `);
+}
+async function deleteVaultConfirmed(){
+  const v = vaults.find(x=>x.id===currentVaultId); if(!v) return;
   vaults = vaults.filter(x=>x.id!==v.id);
   txns   = txns.filter(t=>t.vaultId!==v.id);
   loans  = loans.filter(l=>l.vaultId!==v.id);
   await persistVaults(); await persistTxns(); await persistLoans();
+  closeSheet();
   showToast('Cofre excluído'); goHome();
 }
 
@@ -4843,7 +4989,7 @@ function renderBills(entry){
         <div class="bill-amount-wrap">
           <div style="font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--text-muted);padding:0 6px;">${fmt(amount)}</div>
           <div class="bill-delete" onclick="restoreBill('${b.id}')" title="Restaurar neste mês" style="color:var(--vault-2); font-size:14px;">↩</div>
-          <div class="bill-delete" onclick="deleteBill('${b.id}')">✕</div>
+          <div class="bill-delete" onclick="confirmDeleteBillSheet('${b.id}')">✕</div>
         </div>
       </div>`;
     }
@@ -4857,7 +5003,7 @@ function renderBills(entry){
         <div class="bill-amount-wrap">
           <div class="bill-amount-edit"><input type="number" class="bill-amount-input" inputmode="decimal" value="${amount}" ${paid||b.payFromVaultId?'disabled':''} onchange="updateBillAmount('${b.id}', this.value)" /></div>
           <div class="bill-delete" onclick="openEditBillSheet('${b.id}')" title="Editar despesa" style="color:var(--vault-2);">✎</div>
-          <div class="bill-delete" onclick="deleteBill('${b.id}')">✕</div>
+          <div class="bill-delete" onclick="confirmDeleteBillSheet('${b.id}')">✕</div>
         </div>
       </div>`;
   };
@@ -4987,6 +5133,8 @@ async function unpayBill(billId){
     const targetVault = vaults.find(x => x.id === bill.targetVaultId);
     if(targetVault){
       targetVault.balance = round2(targetVault.balance - amount);
+      const sb = ensureVaultSources(targetVault);
+      ['fisico','vale','conta'].forEach(k => { sb[k] = round2(Math.max(0, (sb[k]||0) - (paidSplit[k]||0))); });
       const txIndex = txns.findIndex(t => t.billId === billId && t.vaultId===targetVault.id && t.type==='deposito');
       if(txIndex !== -1) txns.splice(txIndex, 1);
       await persistVaults(); await persistTxns();
@@ -5029,11 +5177,18 @@ async function updateBillAmount(billId, value){
   entry.billOverrides[billId] = parseFloat(value) || 0;
   await persistMonthData(); renderMonth();
 }
+function confirmDeleteBillSheet(billId){
+  const b = bills.find(x=>x.id===billId); if(!b) return;
+  openSheet(`
+    ${sheetHeader('Apagar despesa?')}
+    <div class="sheet-sub">Apagar "${escapeHtml(b.name)}"? Ela será removida permanentemente de todos os meses. Essa ação não pode ser desfeita.</div>
+    <button class="btn btn-primary danger" onclick="deleteBill('${billId}')">Apagar despesa</button>
+    <button class="btn btn-ghost" onclick="closeSheet()">Cancelar</button>
+  `);
+}
 async function deleteBill(billId){
   const b = bills.find(x=>x.id===billId);
   if(!b) return;
-
-  if(!confirm(`Apagar "${b.name}"?\n\nEla será removida permanentemente de todos os meses.`)) return;
 
   // Reverse vault deposit if this bill had a target vault and was paid this month
   const entry = ensureMonthEntry(currentMonthKey);
@@ -5043,6 +5198,8 @@ async function deleteBill(billId){
     const targetVault = vaults.find(x => x.id === b.targetVaultId);
     if(targetVault){
       targetVault.balance = round2(targetVault.balance - amount);
+      const sbv = ensureVaultSources(targetVault);
+      ['fisico','vale','conta'].forEach(k => { sbv[k] = round2(Math.max(0, (sbv[k]||0) - (paidSplit[k]||0))); });
       const txIndex = txns.findIndex(t => t.billId===billId && t.vaultId===targetVault.id && t.type==='deposito');
       if(txIndex !== -1) txns.splice(txIndex, 1);
       await persistVaults(); await persistTxns();
@@ -5061,6 +5218,7 @@ async function deleteBill(billId){
 
   await persistBills();
   await persistMonthData();
+  closeSheet();
   showToast(`"${b.name}" apagada.`);
   renderMonth();
 }
@@ -5314,6 +5472,7 @@ async function confirmPayBill(billId, amount){
     const v = vaults.find(x => x.id === b.targetVaultId);
     if(v){
       v.balance = round2(v.balance + amount);
+      addVaultSourceSplit(v, split);
       txns.push({ id: uid(), vaultId: v.id, type:'deposito', amount, note:`Transf. Agendada: ${b.name}`, who: null, billId: b.id, ts: Date.now() });
       await persistVaults(); await persistTxns();
     }
@@ -5329,6 +5488,7 @@ async function confirmPayPersonalBill(billId){
   if(amount > v.balance){ if(!confirm(`"${v.name}" vai ficar negativo com essa despesa. Continuar?`)) return; }
 
   v.balance = round2(v.balance - amount);
+  removeVaultSourceProportional(v, amount);
   await persistVaults();
   txns.push({ id: uid(), vaultId: v.id, type:'retirada', amount, note:`Despesa: ${b.name}`, billId: b.id, ts: Date.now() });
   await persistTxns();
@@ -5348,6 +5508,7 @@ async function confirmPayVaultBill(billId){
 
   fromVault.balance = round2(fromVault.balance - amount);
   toVault.balance   = round2(toVault.balance + amount);
+  moveVaultSourceProportional(fromVault, toVault, amount);
   await persistVaults();
 
   const now = Date.now();
@@ -5420,31 +5581,53 @@ function renderMonthSummary(entry, totalIncome){
 }
 
 async function autoDistributeLeftover(){
-  const entry         = ensureMonthEntry(currentMonthKey);
-  let fis             = remainingBySource(entry, 'fisico');
-  let cnt             = remainingBySource(entry, 'conta');
+  if(currentScope() !== 'casa'){ showToast('Distribuir sobra é só no espaço Casa — não há renda registrada em perfis pessoais.'); return; }
+  const entry        = ensureMonthEntry(currentMonthKey);
+  let fisRemaining    = remainingBySource(entry, 'fisico');
+  let cntRemaining    = remainingBySource(entry, 'conta');
+  let leftover        = fisRemaining + cntRemaining;
   const vaultsToFund  = visibleVaults().filter(v => v.goal && v.balance < v.goal);
   if(vaultsToFund.length === 0){ showToast("Nenhum cofre com meta pendente!"); return; }
+  if(leftover <= 0){ showToast("Não há saldo livre disponível."); return; }
 
-  let distributedTotal = 0;
+  let distributedTotal = 0, distributedCount = 0;
+  const now = Date.now();
+
   for(const v of vaultsToFund){
-    let needed   = v.goal - v.balance; if(needed <= 0) continue;
-    let takeCnt  = Math.min(cnt, needed); cnt -= takeCnt; needed -= takeCnt;
-    let takeFis  = Math.min(fis, needed); fis -= takeFis;
-    const taken  = takeCnt + takeFis;
-    if(taken > 0){
-      v.balance = round2(v.balance + taken);
-      txns.push({ id: uid(), vaultId: v.id, type:'deposito', amount: taken, note:'Sobra distribuída para meta', who: null, ts: Date.now() });
-      entry.vaultTransfers.conta  += takeCnt;
-      entry.vaultTransfers.fisico += takeFis;
-      distributedTotal += taken;
-    }
+    if(leftover <= 0) break;
+    const needed = round2(v.goal - v.balance); if(needed <= 0) continue;
+    const take = Math.min(leftover, needed);
+    if(take <= 0) continue;
+
+    const bill = {
+      id: uid(), name: `Guardar para meta — ${escapeHtml(v.name)}`,
+      defaultAmount: take, kind: 'variavel', targetVaultId: v.id,
+      createdMonthKey: currentMonthKey, endMonthKey: currentMonthKey, ownerId: null
+    };
+    bills.push(bill);
+
+    // Já marca como paga na hora — cria e paga num passo só, então tocar de
+    // novo no botão não recria a mesma despesa em aberto (o cofre já bateu
+    // a meta com essa quantia e sai da lista de "precisa guardar").
+    const takeCnt = Math.min(cntRemaining, take); cntRemaining = round2(cntRemaining - takeCnt);
+    const takeFis = round2(take - takeCnt);        fisRemaining = round2(fisRemaining - takeFis);
+    entry.billsPaid[bill.id] = { fisico: takeFis, vale: 0, conta: takeCnt };
+
+    v.balance = round2(v.balance + take);
+    addVaultSourceSplit(v, { fisico: takeFis, vale: 0, conta: takeCnt });
+    txns.push({ id: uid(), vaultId: v.id, type:'deposito', amount: take, note:`Transf. Agendada: ${bill.name}`, who: null, billId: bill.id, ts: now });
+
+    leftover = round2(leftover - take);
+    distributedTotal += take; distributedCount++;
   }
-  if(distributedTotal > 0){
-    await persistVaults(); await persistTxns(); await persistMonthData();
-    showToast(`€ ${distributedTotal.toFixed(2)} distribuídos!`);
+
+  if(distributedCount > 0){
+    await persistBills(); await persistVaults(); await persistTxns(); await persistMonthData();
+    showToast(`✨ ${fmt(distributedTotal)} guardados em ${distributedCount} cofre(s)!`);
     renderMonth(); renderAll();
-  } else { showToast("Não há saldo livre suficiente."); }
+  } else {
+    showToast("Não há saldo livre suficiente.");
+  }
 }
 
 let toastTimer = null;
