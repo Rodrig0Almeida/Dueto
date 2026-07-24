@@ -2138,7 +2138,7 @@ if (!window.storage) {
 // Exibida em Configurações → Desenvolvedor → "Dueto vX.X.X"
 // Formato: MAJOR.MINOR.PATCH  — ex: 2.1.0 → 2.1.1 (bugfix) ou 2.2.0 (feature)
 // ================================================================
-const APP_VERSION = '3.5.0';  // last updated: 2026-07-14 — added: antes de cada envio à nuvem, busca a versão mais recente e mescla por ID (soma o que outro aparelho adicionou), reduzindo o risco de sobrescrever dados novos com uma versão desatualizada
+const APP_VERSION = '3.6.0';  // last updated: 2026-07-14 — added: renda e nomes/fotos de perfil agora têm carimbo de data por campo, e o pull-before-push usa isso pra mesclar de verdade (quem editou por último vence), fechando a lacuna que só cobria cofres/despesas/empréstimos
 
 // Dev Mode — Force reload bypassing all browser cache so device gets latest version.
 // Shows current version before reloading so the user can see if it changed.
@@ -2257,7 +2257,7 @@ function ensureMonthEntry(key){
   if(!monthData[key]){
     monthData[key] = {
       income: { a: {fisico:0, vale:0, conta:0}, b: {fisico:0, vale:0, conta:0} },
-      billOverrides: {}, billsPaid: {}, vaultTransfers: { fisico:0, conta:0, vale:0 }, fairExpenses: [0,0,0,0]
+      billOverrides: {}, billsPaid: {}, vaultTransfers: { fisico:0, conta:0, vale:0 }, fairExpenses: [0,0,0,0], incomeTs: {}
     };
   }
   const e = monthData[key];
@@ -2267,7 +2267,15 @@ function ensureMonthEntry(key){
   if(!e.hiddenBills) e.hiddenBills = {};
   if(!e.vaultTransfers) e.vaultTransfers = { fisico:0, conta:0, vale:0 };
   if(!e.fairExpenses) e.fairExpenses = [0,0,0,0];
+  if(!e.incomeTs) e.incomeTs = {};
   return e;
+}
+// Marca quando um campo de renda específico (pessoa+fonte) foi editado pela
+// última vez. É o que permite ao pull-before-push saber, campo a campo, qual
+// versão é mais nova — números soltos como renda não têm "ID" pra mesclar
+// por união como cofres/despesas têm, então precisam desse relógio próprio.
+function touchIncomeField(entry, w, src){
+  entry.incomeTs[`${w}.${src}`] = Date.now();
 }
 
 function findFeiraVault(){ return vaults.find(v => v.name && v.name.trim().toLowerCase() === 'feira'); }
@@ -2669,9 +2677,42 @@ async function pullAndMergeBeforePush(){
             });
           }
         });
+        // Renda: campo a campo (pessoa+fonte), usando o carimbo de quando foi
+        // editado por último em cada aparelho — quem editou mais recente vence.
+        if(cloudEntry.income && typeof cloudEntry.income === 'object'){
+          ['a','b'].forEach(who => {
+            ['fisico','vale','conta'].forEach(src => {
+              const fieldKey  = `${who}.${src}`;
+              const cloudTs   = (cloudEntry.incomeTs || {})[fieldKey] || 0;
+              const localTs   = (localEntry.incomeTs || {})[fieldKey] || 0;
+              const cloudVal  = cloudEntry.income[who] ? cloudEntry.income[who][src] : undefined;
+              if(cloudVal !== undefined && cloudTs > localTs){
+                localEntry.income[who][src] = cloudVal;
+                localEntry.incomeTs[fieldKey] = cloudTs;
+              }
+            });
+          });
+        }
       });
     }
-    logSyncEvent('info', 'Mesclado com a nuvem antes de enviar', 'novos itens de outro aparelho incorporados, se houver');
+
+    // Nomes/fotos de perfil: mesma lógica de "quem editou por último vence",
+    // campo a campo, usando names._ts.
+    if(cloud.names && typeof cloud.names === 'object'){
+      const cloudTs = cloud.names._ts || {};
+      const localTs = names._ts || {};
+      ['a','b','photoA','photoB'].forEach(field => {
+        const cTs = cloudTs[field] || 0;
+        const lTs = localTs[field] || 0;
+        if(cTs > lTs && field in cloud.names){
+          names[field] = cloud.names[field];
+          if(!names._ts) names._ts = {};
+          names._ts[field] = cTs;
+        }
+      });
+    }
+
+    logSyncEvent('info', 'Mesclado com a nuvem antes de enviar', 'novos itens e campos mais recentes de outro aparelho incorporados, se houver');
   }catch(e){
     // Sem internet ou planilha indisponível agora — segue só com o que já tem localmente.
     logSyncEvent('info', 'Não foi possível buscar antes de enviar — enviando só com dados locais', e.message || String(e));
@@ -3504,9 +3545,13 @@ async function finishCloudSync(decoded, manual){
   renderAll(); renderMonth(); renderProfileSwitcher();
 }
 
+function touchNameField(field){
+  if(!names._ts) names._ts = {};
+  names._ts[field] = Date.now();
+}
 function updateProfileName(key, value){
-  if(key === 'a'){ names.a = value; }
-  else if(key === 'b'){ names.b = value; }
+  if(key === 'a'){ names.a = value; touchNameField('a'); }
+  else if(key === 'b'){ names.b = value; touchNameField('b'); }
   else {
     const extras = appSettings.extraProfiles || [];
     const ep = extras.find(p => p.key === key);
@@ -3576,8 +3621,8 @@ async function handleProfilePhotoChange(key, inputEl){
   if(!file.type || !file.type.startsWith('image/')){ showToast('Selecione um arquivo de imagem.'); inputEl.value=''; return; }
   try{
     const dataUrl = await resizeImageToDataUrl(file, 200);
-    if(key === 'A' || key === 'a'){ names.photoA = dataUrl; }
-    else if(key === 'B' || key === 'b'){ names.photoB = dataUrl; }
+    if(key === 'A' || key === 'a'){ names.photoA = dataUrl; touchNameField('photoA'); }
+    else if(key === 'B' || key === 'b'){ names.photoB = dataUrl; touchNameField('photoB'); }
     else {
       const extras = appSettings.extraProfiles || [];
       const ep = extras.find(p => p.key === key);
@@ -3596,8 +3641,8 @@ async function handleProfilePhotoChange(key, inputEl){
 }
 
 async function removeProfilePhoto(key){
-  if(key === 'a' || key === 'A'){ delete names.photoA; }
-  else if(key === 'b' || key === 'B'){ delete names.photoB; }
+  if(key === 'a' || key === 'A'){ delete names.photoA; touchNameField('photoA'); }
+  else if(key === 'b' || key === 'B'){ delete names.photoB; touchNameField('photoB'); }
   else {
     const extras = appSettings.extraProfiles || [];
     const ep = extras.find(p => p.key === key);
@@ -3646,6 +3691,7 @@ function confirmClearProfileB(){
 async function clearProfileB(){
   names.b = '';
   names.photoB = null;
+  touchNameField('b'); touchNameField('photoB');
   window._forceShowProfileB = false;
   if(currentScope() === 'b'){ localSettings.currentProfile = 'casa'; await persistLocalSettings(); }
   await persistNames();
@@ -4755,12 +4801,15 @@ async function confirmAddIncome(){
   if(!amt || amt <= 0){ showToast('Valor inválido'); return; }
   const entry = ensureMonthEntry(currentMonthKey);
   entry.income[w][src] = (entry.income[w][src] || 0) + amt;
+  touchIncomeField(entry, w, src);
   await persistMonthData(); closeSheet(); renderMonth();
 }
 async function removeIncome(w, src){
   if(!confirm("Remover esta renda?")) return;
   const entry = ensureMonthEntry(currentMonthKey);
-  entry.income[w][src] = 0; await persistMonthData(); renderMonth();
+  entry.income[w][src] = 0;
+  touchIncomeField(entry, w, src);
+  await persistMonthData(); renderMonth();
 }
 
 function renderFeira(){
@@ -5222,6 +5271,7 @@ async function unpayBill(billId){
 async function updateIncome(w, src, value){
   const entry = ensureMonthEntry(currentMonthKey);
   entry.income[w][src] = parseFloat(value) || 0;
+  touchIncomeField(entry, w, src);
   await persistMonthData(); renderMonth();
 }
 async function updateBillAmount(billId, value){
