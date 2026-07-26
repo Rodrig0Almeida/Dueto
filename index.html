@@ -2138,7 +2138,7 @@ if (!window.storage) {
 // Exibida em Configurações → Desenvolvedor → "Dueto vX.X.X"
 // Formato: MAJOR.MINOR.PATCH  — ex: 2.1.0 → 2.1.1 (bugfix) ou 2.2.0 (feature)
 // ================================================================
-const APP_VERSION = '3.6.0';  // last updated: 2026-07-14 — added: renda e nomes/fotos de perfil agora têm carimbo de data por campo, e o pull-before-push usa isso pra mesclar de verdade (quem editou por último vence), fechando a lacuna que só cobria cofres/despesas/empréstimos
+const APP_VERSION = '3.6.1';  // last updated: 2026-07-14 — fix: devolução de empréstimo entre cofres agora vence no mês seguinte à data real de hoje, não ao mês que está sendo navegado; divisão por origem (conta/físico/vale) agora aparece em todos os cofres, atribuindo saldo antigo não rastreado à conta bancária
 
 // Dev Mode — Force reload bypassing all browser cache so device gets latest version.
 // Shows current version before reloading so the user can see if it changed.
@@ -3084,8 +3084,15 @@ function renderDetail(){
   const sb = ensureVaultSources(v);
   const breakdownEl = document.getElementById('detailSourceBreakdown');
   if(breakdownEl){
+    // Saldo de cofres criados antes desse recurso (ou movimentado por algum
+    // caminho ainda não rastreado) não tem origem conhecida — pra sempre
+    // bater com o saldo real do cofre, o que sobra é atribuído a "conta
+    // bancária" só pra exibição (não altera o valor guardado de verdade).
+    const trackedSum = (sb.fisico||0) + (sb.vale||0) + (sb.conta||0);
+    const untracked   = round2(v.balance - trackedSum);
+    const contaDisplay = round2((sb.conta||0) + (untracked > 0 ? untracked : 0));
     const items = [
-      { key:'conta',  label:'Conta bancária',   emoji:'🏦', value: sb.conta  || 0 },
+      { key:'conta',  label:'Conta bancária',   emoji:'🏦', value: contaDisplay },
       { key:'fisico', label:'Dinheiro físico',  emoji:'💵', value: sb.fisico || 0 },
       { key:'vale',   label:'Vale-alimentação', emoji:'🍽️', value: sb.vale   || 0 },
     ].filter(it => Math.abs(it.value) > 0.004);
@@ -4314,7 +4321,7 @@ function openVaultLoanSheet(){
   const casaVaults = currentScope() !== 'casa' ? vaults.filter(x => !x.ownerId) : [];
   const otherVaults = [...sameScope, ...casaVaults];
   if(otherVaults.length === 0){ showToast('Crie outro cofre para poder emprestar entre cofres.'); return; }
-  const nextLabel = monthLabelFor(nextMonthKey(currentMonthKey));
+  const nextLabel = monthLabelFor(nextMonthKey(monthKeyFor(new Date())));
   const optionsHtml = currentScope() === 'casa'
     ? otherVaults.map(x=>`<option value="${x.id}">${escapeHtml(x.name)}</option>`).join('')
     : `${sameScope.length ? `<optgroup label="Seus cofres">${sameScope.map(x=>`<option value="${x.id}">${escapeHtml(x.name)}</option>`).join('')}</optgroup>` : ''}
@@ -4350,7 +4357,7 @@ async function confirmVaultLoan(){
   txns.push({ id: uid(), vaultId: dest.id, type:'deposito', amount, note: note ? `Empréstimo recebido: ${note}` : `Empréstimo de "${escapeHtml(v.name)}"`, ts: now });
   await persistTxns();
 
-  const due = nextMonthKey(currentMonthKey);
+  const due = nextMonthKey(monthKeyFor(new Date()));
   const billOwnerId = (v.ownerId && v.ownerId === dest.ownerId) ? v.ownerId : null;
   bills.push({
     id: uid(), name: `Devolver empréstimo — ${escapeHtml(dest.name)} → ${escapeHtml(v.name)}`,
