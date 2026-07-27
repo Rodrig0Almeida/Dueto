@@ -2138,7 +2138,7 @@ if (!window.storage) {
 // Exibida em Configurações → Desenvolvedor → "Dueto vX.X.X"
 // Formato: MAJOR.MINOR.PATCH  — ex: 2.1.0 → 2.1.1 (bugfix) ou 2.2.0 (feature)
 // ================================================================
-const APP_VERSION = '3.6.1';  // last updated: 2026-07-14 — fix: devolução de empréstimo entre cofres agora vence no mês seguinte à data real de hoje, não ao mês que está sendo navegado; divisão por origem (conta/físico/vale) agora aparece em todos os cofres, atribuindo saldo antigo não rastreado à conta bancária
+const APP_VERSION = '3.7.0';  // last updated: 2026-07-14 — fix: quitar vários empréstimos de uma vez agora credita o cofre de verdade (só registrava no histórico sem somar o saldo); added: opção de ocultar despesa só neste mês, além de apagar de vez
 
 // Dev Mode — Force reload bypassing all browser cache so device gets latest version.
 // Shows current version before reloading so the user can see if it changed.
@@ -4532,11 +4532,16 @@ async function confirmMultiPay(){
   const selectedLoans = loans.filter(l => selected.includes(l.id));
   let remainingAmount = amountInput;
   const now = Date.now();
+  let vaultsTouched = false;
   for(const loan of selectedLoans){
+    const vault = vaults.find(v=>v.id===loan.vaultId);
     if(forgive){
       const paid = Math.min(remainingAmount, loan.remaining);
       remainingAmount -= paid; loan.remaining = 0; loan.paidInstallments = loan.installments;
-      if(paid > 0) txns.push({ id: uid(), vaultId: loan.vaultId, type:'pagamento', amount: paid, note:'Quitado com perdão parcial', who: null, ts: now, loanId: loan.id });
+      if(paid > 0){
+        if(vault){ vault.balance = round2(vault.balance + paid); addVaultSource(vault, 'conta', paid); vaultsTouched = true; }
+        txns.push({ id: uid(), vaultId: loan.vaultId, type:'pagamento', amount: paid, note:'Quitado com perdão parcial', who: null, ts: now, loanId: loan.id });
+      }
       continue;
     }
     if(remainingAmount <= 0) break;
@@ -4544,11 +4549,13 @@ async function confirmMultiPay(){
     loan.remaining = Math.max(0, loan.remaining - paid);
     loan.paidInstallments = loan.remaining === 0 ? loan.installments : Math.min(loan.installments, loan.paidInstallments + 1);
     remainingAmount -= paid;
+    if(vault && paid > 0){ vault.balance = round2(vault.balance + paid); addVaultSource(vault, 'conta', paid); vaultsTouched = true; }
     txns.push({ id: uid(), vaultId: loan.vaultId, type:'pagamento', amount: paid, note:'Pagamento múltiplo', who: null, ts: now, loanId: loan.id });
   }
+  if(vaultsTouched) await persistVaults();
   await persistLoans(); await persistTxns();
   closeSheet(); showToast(forgive ? 'Empréstimos quitados com perdão parcial.' : 'Pagamento múltiplo registrado.');
-  renderLoans(); renderAll();
+  renderLoans(); renderDetail(); renderAll();
 }
 async function confirmPayInstallment(loanId){
   const loan        = loans.find(l=>l.id===loanId); if(!loan) return;
@@ -5288,12 +5295,31 @@ async function updateBillAmount(billId, value){
 }
 function confirmDeleteBillSheet(billId){
   const b = bills.find(x=>x.id===billId); if(!b) return;
+  const entry = ensureMonthEntry(currentMonthKey);
+  const isHiddenThisMonth = !!entry.hiddenBills[billId];
   openSheet(`
-    ${sheetHeader('Apagar despesa?')}
-    <div class="sheet-sub">Apagar "${escapeHtml(b.name)}"? Ela será removida permanentemente de todos os meses. Essa ação não pode ser desfeita.</div>
-    <button class="btn btn-primary danger" onclick="deleteBill('${billId}')">Apagar despesa</button>
+    ${sheetHeader('Remover despesa')}
+    <div class="sheet-sub">"${escapeHtml(b.name)}" — o que você quer fazer?</div>
+    ${isHiddenThisMonth
+      ? `<button class="btn btn-primary" onclick="unhideBillThisMonth('${billId}')">↩️ Mostrar de novo neste mês</button>`
+      : `<button class="btn btn-primary" onclick="hideBillThisMonth('${billId}')">🙈 Ocultar só este mês</button>`}
+    <div class="section-sub" style="margin:-4px 2px 14px;">Some da lista este mês, mas continua ativa nos outros meses — pode trazer de volta a qualquer momento.</div>
+    <button class="btn btn-primary danger" onclick="deleteBill('${billId}')">🗑️ Apagar de vez (todos os meses)</button>
+    <div class="section-sub" style="margin:-4px 2px 14px;">Remove permanentemente, de todos os meses. Não pode ser desfeito.</div>
     <button class="btn btn-ghost" onclick="closeSheet()">Cancelar</button>
   `);
+}
+async function hideBillThisMonth(billId){
+  const entry = ensureMonthEntry(currentMonthKey);
+  entry.hiddenBills[billId] = true;
+  await persistMonthData();
+  closeSheet(); showToast('Ocultada este mês — continua ativa nos outros meses.'); renderMonth();
+}
+async function unhideBillThisMonth(billId){
+  const entry = ensureMonthEntry(currentMonthKey);
+  delete entry.hiddenBills[billId];
+  await persistMonthData();
+  closeSheet(); showToast('Despesa restaurada neste mês.'); renderMonth();
 }
 async function deleteBill(billId){
   const b = bills.find(x=>x.id===billId);
