@@ -1034,23 +1034,7 @@ body.dark .menu-item:active { background: rgba(255,255,255,0.1); }
   font-size: var(--text-sm);
 }
 #updateBannerText { font-weight: 700; }
-#updateBanner button {
-  padding: 9px 16px;
-  border-radius: var(--r-full);
-  border: none;
-  font-weight: 700;
-  font-size: var(--text-sm);
-  cursor: pointer;
-  background: #fff;
-  color: var(--vault);
-}
-#updateBanner button.ghost {
-  background: rgba(255,255,255,0.15);
-  color: #fff;
-}
 body.dark #updateBanner { background: #1A1A21; border-bottom: 1px solid rgba(255,255,255,0.1); }
-body.dark #updateBanner button { background: var(--vault-light); color: #fff; }
-body.dark #updateBanner button.ghost { background: rgba(255,255,255,0.08); color: var(--ink); }
 
 
 /* ================================================================
@@ -1680,11 +1664,7 @@ body.dark .loan-progress-bg { background: rgba(255,255,255,0.14); }
 <body>
 
 <div id="updateBanner" style="display:none;">
-  <div id="updateBannerText">🆕 Nova versão disponível</div>
-  <div style="display:flex; gap:8px; margin-top:8px;">
-    <button onclick="applyUpdateNow()">Atualizar agora</button>
-    <button onclick="dismissUpdateBanner()" class="ghost">Depois</button>
-  </div>
+  <div id="updateBannerText">🆕 Atualizando…</div>
 </div>
 
 <div class="app" id="app">
@@ -2177,7 +2157,7 @@ if (!window.storage) {
 // Exibida em Configurações → Desenvolvedor → "Dueto vX.X.X"
 // Formato: MAJOR.MINOR.PATCH  — ex: 2.1.0 → 2.1.1 (bugfix) ou 2.2.0 (feature)
 // ================================================================
-const APP_VERSION = '3.8.0';  // last updated: 2026-07-14 — added: verificação automática de nova versão ao abrir o app, com faixa dispensável no topo (sem precisar do Modo Dev nem de confirm() nativo)
+const APP_VERSION = '3.8.1';  // last updated: 2026-07-14 — fix: verificação de atualização agora avisa e já atualiza sozinha, sem perguntar nem precisar de botão
 
 // Dev Mode — Force reload bypassing all browser cache so device gets latest version.
 // Shows current version before reloading so the user can see if it changed.
@@ -2194,26 +2174,21 @@ async function checkForUpdateOnBoot(){
     const remoteVersion = match ? match[1] : null;
     if(!remoteVersion || remoteVersion === APP_VERSION) return;
 
-    const dismissedKey = 'updateDismissed_' + remoteVersion;
-    if(sessionStorage.getItem(dismissedKey)) return; // já dispensou essa versão nesta sessão
+    // Evita loop de recarregamento se, por algum motivo (cache teimoso etc.),
+    // a página recarregada ainda reportar essa mesma versão nova como pendente.
+    const attemptedKey = 'updateAutoApplied_' + remoteVersion;
+    if(sessionStorage.getItem(attemptedKey)) return;
+    try{ sessionStorage.setItem(attemptedKey, '1'); }catch(e){}
 
-    window._pendingUpdateVersion = remoteVersion;
     const banner = document.getElementById('updateBanner');
     const text   = document.getElementById('updateBannerText');
-    if(text) text.textContent = `🆕 Nova versão disponível: v${remoteVersion} (atual: v${APP_VERSION})`;
+    if(text) text.textContent = `🆕 Atualizando para v${remoteVersion}…`;
     if(banner) banner.style.display = 'block';
+
+    setTimeout(() => { location.replace(location.href.split('?')[0] + '?v=' + Date.now()); }, 1200);
   }catch(e){
     // Sem internet ou falha ao buscar — não incomoda o usuário por causa disso.
   }
-}
-function applyUpdateNow(){
-  location.replace(location.href.split('?')[0] + '?v=' + Date.now());
-}
-function dismissUpdateBanner(){
-  const v = window._pendingUpdateVersion;
-  if(v) { try{ sessionStorage.setItem('updateDismissed_' + v, '1'); }catch(e){} }
-  const banner = document.getElementById('updateBanner');
-  if(banner) banner.style.display = 'none';
 }
 
 async function devCheckForUpdate(){
