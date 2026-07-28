@@ -1022,6 +1022,37 @@ body.dark .menu-item:active { background: rgba(255,255,255,0.1); }
   transform: translateX(-50%) translateY(0);
 }
 
+#updateBanner {
+  position: fixed;
+  top: env(safe-area-inset-top, 0px);
+  left: 0; right: 0;
+  z-index: 998;
+  background: var(--vault);
+  color: #fff;
+  padding: 14px 18px calc(14px + env(safe-area-inset-bottom, 0px));
+  box-shadow: var(--shadow-md);
+  font-size: var(--text-sm);
+}
+#updateBannerText { font-weight: 700; }
+#updateBanner button {
+  padding: 9px 16px;
+  border-radius: var(--r-full);
+  border: none;
+  font-weight: 700;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  background: #fff;
+  color: var(--vault);
+}
+#updateBanner button.ghost {
+  background: rgba(255,255,255,0.15);
+  color: #fff;
+}
+body.dark #updateBanner { background: #1A1A21; border-bottom: 1px solid rgba(255,255,255,0.1); }
+body.dark #updateBanner button { background: var(--vault-light); color: #fff; }
+body.dark #updateBanner button.ghost { background: rgba(255,255,255,0.08); color: var(--ink); }
+
+
 /* ================================================================
    WHO TAG
    ================================================================ */
@@ -1648,6 +1679,14 @@ body.dark .loan-progress-bg { background: rgba(255,255,255,0.14); }
 </head>
 <body>
 
+<div id="updateBanner" style="display:none;">
+  <div id="updateBannerText">🆕 Nova versão disponível</div>
+  <div style="display:flex; gap:8px; margin-top:8px;">
+    <button onclick="applyUpdateNow()">Atualizar agora</button>
+    <button onclick="dismissUpdateBanner()" class="ghost">Depois</button>
+  </div>
+</div>
+
 <div class="app" id="app">
 
   <!-- ===================== HOME ===================== -->
@@ -2138,10 +2177,45 @@ if (!window.storage) {
 // Exibida em Configurações → Desenvolvedor → "Dueto vX.X.X"
 // Formato: MAJOR.MINOR.PATCH  — ex: 2.1.0 → 2.1.1 (bugfix) ou 2.2.0 (feature)
 // ================================================================
-const APP_VERSION = '3.7.0';  // last updated: 2026-07-14 — fix: quitar vários empréstimos de uma vez agora credita o cofre de verdade (só registrava no histórico sem somar o saldo); added: opção de ocultar despesa só neste mês, além de apagar de vez
+const APP_VERSION = '3.8.0';  // last updated: 2026-07-14 — added: verificação automática de nova versão ao abrir o app, com faixa dispensável no topo (sem precisar do Modo Dev nem de confirm() nativo)
 
 // Dev Mode — Force reload bypassing all browser cache so device gets latest version.
 // Shows current version before reloading so the user can see if it changed.
+// Verifica por uma versão nova sozinho, ao abrir o app — não depende do Modo
+// Dev nem do confirm() nativo (que pode ser bloqueado silenciosamente por
+// alguns bloqueadores/extensões, como já vimos antes). Mostra uma faixa no
+// topo, dispensável, em vez de travar a tela com uma pergunta.
+async function checkForUpdateOnBoot(){
+  try{
+    const url  = location.href.split('?')[0] + '?v=' + Date.now();
+    const resp = await fetch(url, { cache: 'no-store' });
+    const html = await resp.text();
+    const match = html.match(/const APP_VERSION\s*=\s*['"]([^'"]+)['"]/);
+    const remoteVersion = match ? match[1] : null;
+    if(!remoteVersion || remoteVersion === APP_VERSION) return;
+
+    const dismissedKey = 'updateDismissed_' + remoteVersion;
+    if(sessionStorage.getItem(dismissedKey)) return; // já dispensou essa versão nesta sessão
+
+    window._pendingUpdateVersion = remoteVersion;
+    const banner = document.getElementById('updateBanner');
+    const text   = document.getElementById('updateBannerText');
+    if(text) text.textContent = `🆕 Nova versão disponível: v${remoteVersion} (atual: v${APP_VERSION})`;
+    if(banner) banner.style.display = 'block';
+  }catch(e){
+    // Sem internet ou falha ao buscar — não incomoda o usuário por causa disso.
+  }
+}
+function applyUpdateNow(){
+  location.replace(location.href.split('?')[0] + '?v=' + Date.now());
+}
+function dismissUpdateBanner(){
+  const v = window._pendingUpdateVersion;
+  if(v) { try{ sessionStorage.setItem('updateDismissed_' + v, '1'); }catch(e){} }
+  const banner = document.getElementById('updateBanner');
+  if(banner) banner.style.display = 'none';
+}
+
 async function devCheckForUpdate(){
   if(!localSettings.devMode){ showToast('Ative o Modo Dev primeiro'); return; }
 
@@ -2577,6 +2651,7 @@ async function loadAll(manual = false){
   renderAll();
   renderMonth();
   renderProfileSwitcher();
+  checkForUpdateOnBoot(); // não precisa esperar — roda em paralelo, sem travar a abertura do app
 }
 
 async function persistVaults()    { await safeSet('vaults',    vaults);    }
