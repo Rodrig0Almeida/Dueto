@@ -2001,7 +2001,7 @@ if (!window.storage) {
   };
 }
 
-const APP_VERSION = '3.8.2';  // last updated: 2026-07-14 — cleanup: comentários explicativos removidos do HTML/CSS (agora vivem em DOCUMENTACAO.md); ~8,5% menor, sem nenhuma mudança de comportamento
+const APP_VERSION = '3.9.0';  // last updated: 2026-07-14 — revert: removido o pull-before-push (buscar antes de enviar). Ele estava ressuscitando itens desmarcados/apagados localmente (ex: desmarcar despesa paga voltava sozinha) porque tratava "não existe mais local" igual a "outro aparelho adicionou". Voltou ao envio direto — mais rápido e sem esse bug. A ideia de reduzir conflito entre aparelhos precisa de um jeito melhor de rastrear exclusões antes de voltar.
 
 async function checkForUpdateOnBoot(){
   try{
@@ -2441,77 +2441,8 @@ function scheduleCloudPush(){
   syncPushTimer = setTimeout(pushToCloud, SYNC_DEBOUNCE_MS);
 }
 
-function mergeArrayAdditionsById(localArr, cloudArr){
-  if(!Array.isArray(cloudArr) || cloudArr.length === 0) return localArr;
-  const localIds = new Set(localArr.map(x => x && x.id));
-  const additions = cloudArr.filter(x => x && x.id && !localIds.has(x.id));
-  return additions.length ? [...localArr, ...additions] : localArr;
-}
-async function pullAndMergeBeforePush(){
-  if(!syncUrl) return;
-  try{
-    const res = await fetch(syncUrl, { method: 'GET' });
-    if(!res.ok) return;
-    const cloud = await res.json();
-    if(!cloud || typeof cloud !== 'object' || cloud.encrypted === true) return; // não decifra aqui — segue com o local
-
-    vaults = mergeArrayAdditionsById(vaults, cloud.vaults);
-    txns   = mergeArrayAdditionsById(txns,   cloud.txns);
-    loans  = mergeArrayAdditionsById(loans,  cloud.loans);
-    bills  = mergeArrayAdditionsById(bills,  cloud.bills);
-
-    if(cloud.monthData && typeof cloud.monthData === 'object'){
-      Object.keys(cloud.monthData).forEach(mk => {
-        const cloudEntry = cloud.monthData[mk];
-        if(!cloudEntry) return;
-        const localEntry = ensureMonthEntry(mk);
-        ['billsPaid','billOverrides','hiddenBills'].forEach(field => {
-          if(cloudEntry[field] && typeof cloudEntry[field] === 'object'){
-            Object.keys(cloudEntry[field]).forEach(k => {
-              if(!(k in localEntry[field])) localEntry[field][k] = cloudEntry[field][k];
-            });
-          }
-        });
-        if(cloudEntry.income && typeof cloudEntry.income === 'object'){
-          ['a','b'].forEach(who => {
-            ['fisico','vale','conta'].forEach(src => {
-              const fieldKey  = `${who}.${src}`;
-              const cloudTs   = (cloudEntry.incomeTs || {})[fieldKey] || 0;
-              const localTs   = (localEntry.incomeTs || {})[fieldKey] || 0;
-              const cloudVal  = cloudEntry.income[who] ? cloudEntry.income[who][src] : undefined;
-              if(cloudVal !== undefined && cloudTs > localTs){
-                localEntry.income[who][src] = cloudVal;
-                localEntry.incomeTs[fieldKey] = cloudTs;
-              }
-            });
-          });
-        }
-      });
-    }
-
-    if(cloud.names && typeof cloud.names === 'object'){
-      const cloudTs = cloud.names._ts || {};
-      const localTs = names._ts || {};
-      ['a','b','photoA','photoB'].forEach(field => {
-        const cTs = cloudTs[field] || 0;
-        const lTs = localTs[field] || 0;
-        if(cTs > lTs && field in cloud.names){
-          names[field] = cloud.names[field];
-          if(!names._ts) names._ts = {};
-          names._ts[field] = cTs;
-        }
-      });
-    }
-
-    logSyncEvent('info', 'Mesclado com a nuvem antes de enviar', 'novos itens e campos mais recentes de outro aparelho incorporados, se houver');
-  }catch(e){
-    logSyncEvent('info', 'Não foi possível buscar antes de enviar — enviando só com dados locais', e.message || String(e));
-  }
-}
-
 async function pushToCloud(){
   if(!syncUrl) return;
-  await pullAndMergeBeforePush();
   const payload = buildCloudPayload();
   let body;
   try{
