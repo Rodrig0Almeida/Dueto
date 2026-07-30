@@ -2001,7 +2001,7 @@ if (!window.storage) {
   };
 }
 
-const APP_VERSION = '3.9.0';  // last updated: 2026-07-14 — revert: removido o pull-before-push (buscar antes de enviar). Ele estava ressuscitando itens desmarcados/apagados localmente (ex: desmarcar despesa paga voltava sozinha) porque tratava "não existe mais local" igual a "outro aparelho adicionou". Voltou ao envio direto — mais rápido e sem esse bug. A ideia de reduzir conflito entre aparelhos precisa de um jeito melhor de rastrear exclusões antes de voltar.
+const APP_VERSION = '3.9.1';  // last updated: 2026-07-14 — fix: confirmação de sincronização (sucesso ou falha) agora aparece dentro da própria tela de carregamento por um instante antes de sumir, em vez de um toast separado que nunca aparecia na abertura automática
 
 async function checkForUpdateOnBoot(){
   try{
@@ -2377,10 +2377,16 @@ async function loadAll(manual = false){
       }
     }catch(err){
       console.warn('Falha ao buscar dados da nuvem, usando dados locais:', err);
-      if(manual) showToast(`⚠️ Sync falhou: ${err.message || err}`);
       await loadFromLocalStorage();
       if(pruneOrphanedBillData()) await persistMonthData();
       setSyncStatus('nolink');
+      const stillOnSplash = !!document.getElementById('splashScreen');
+      if(stillOnSplash){
+        showLoadingState('⚠️ Sem conexão com a planilha — usando dados salvos');
+        await new Promise(r => setTimeout(r, 900));
+      } else if(manual){
+        showToast(`⚠️ Sync falhou: ${err.message || err}`);
+      }
     }
   } else {
     await loadFromLocalStorage();
@@ -3207,7 +3213,13 @@ async function finishCloudSync(decoded, manual){
   if(pruneOrphanedBillData()) await persistMonthData();
   await persistLocalOnlySilently();
   setSyncStatus('synced');
-  if(manual) showToast('✅ Sincronizado com sucesso');
+  const stillOnSplash = !!document.getElementById('splashScreen');
+  if(stillOnSplash){
+    showLoadingState('✅ Planilha atualizada');
+    await new Promise(r => setTimeout(r, 600)); // dá tempo do usuário ver a confirmação antes da tela sumir
+  } else if(manual){
+    showToast('✅ Sincronizado com sucesso');
+  }
   renderAll(); renderMonth(); renderProfileSwitcher();
 }
 
