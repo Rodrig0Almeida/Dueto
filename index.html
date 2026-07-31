@@ -1128,37 +1128,6 @@ body.dark #updateBanner { background: #1A1A21; border-bottom: 1px solid rgba(255
 .sb-value  { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: var(--text-sm); margin-top: 2px; }
 .sb-value.negative { color: var(--terracotta); }
 
-.leftover-banner {
-  background: rgba(184,134,43,0.12);
-  border: 1px solid rgba(184,134,43,0.3);
-  border-radius: var(--r-lg);
-  padding: 16px;
-  text-align: center;
-  margin: 18px 0;
-}
-.lb-label {
-  font-size: var(--text-xs);
-  color: var(--brass);
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  margin-bottom: 5px;
-}
-.lb-value {
-  font-family: 'JetBrains Mono', monospace;
-  font-weight: 700;
-  font-size: 24px;
-  color: var(--ink);
-  margin-bottom: 12px;
-}
-.lb-sub {
-  font-size: var(--text-sm);
-  color: var(--text-muted);
-  margin-bottom: 12px;
-}
-.lb-actions { display: flex; gap: 8px; flex-direction: column; }
-.lb-actions .btn { margin-top: 0; font-size: var(--text-sm); padding: 11px; }
-
 .split-row {
   display: flex; align-items: center; gap: 10px;
   background: #fff;
@@ -1300,7 +1269,6 @@ body.dark .ms-row.divider { border-color: rgba(255,255,255,0.18); }
 
 body.dark .installment-preview { background: rgba(184,134,43,0.15); }
 
-body.dark .leftover-banner { background: rgba(184,134,43,0.1); border-color: rgba(184,134,43,0.25); }
 
 body.dark .month-picker-cell { background: #1E1E24; color: var(--ink); }
 
@@ -1549,7 +1517,6 @@ body.dark .loan-progress-bg { background: rgba(255,255,255,0.14); }
     </div>
 
     <div class="vault-count section-sub" id="vaultCount"></div>
-    <div id="homeDistributeLeftover"></div>
     <div class="vaults" id="vaultsList"></div>
 
     <div class="add-dashed-btn" onclick="openNewVaultSheet()">
@@ -1664,13 +1631,6 @@ body.dark .loan-progress-bg { background: rgba(255,255,255,0.14); }
       </div>
 
       <div class="month-summary" id="monthSummary"></div>
-
-      <div class="leftover-banner" id="leftoverBanner" style="display:none;">
-        <div class="lb-label">Sobra do Mês</div>
-        <div class="lb-value" id="leftoverValue">€ 0,00</div>
-        <div class="lb-sub">Seu dinheiro excedente livre para guardar.</div>
-        <div class="lb-actions" id="leftoverAction"></div>
-      </div>
     </div>
   </div>
 
@@ -2001,7 +1961,7 @@ if (!window.storage) {
   };
 }
 
-const APP_VERSION = '3.9.1';  // last updated: 2026-07-14 — fix: confirmação de sincronização (sucesso ou falha) agora aparece dentro da própria tela de carregamento por um instante antes de sumir, em vez de um toast separado que nunca aparecia na abertura automática
+const APP_VERSION = '4.0.0';  // last updated: 2026-07-14 — removed: "Distribuir pelas metas" (banner e botão) tirado por completo. fix: pagar a devolução de empréstimo entre cofres usava dois confirm() nativos seguidos, que podiam ser bloqueados silenciosamente e travar o pagamento sem avisar — trocado por sheet de confirmação própria do app
 
 async function checkForUpdateOnBoot(){
   try{
@@ -2685,20 +2645,6 @@ function renderAll(){
 
   const list = document.getElementById('vaultsList');
   document.getElementById('vaultCount').textContent = scopedVaults.length + (scopedVaults.length===1?' cofre':' cofres');
-
-  const distEl = document.getElementById('homeDistributeLeftover');
-  if(distEl){
-    const scope = currentScope();
-    const vaultsPending = scopedVaults.filter(v => v.goal && v.balance < v.goal);
-    let liquidLeftover = 0;
-    if(scope === 'casa'){
-      const monthEntry = ensureMonthEntry(currentMonthKey);
-      liquidLeftover = remainingBySource(monthEntry, 'fisico') + remainingBySource(monthEntry, 'conta');
-    }
-    distEl.innerHTML = (scope === 'casa' && liquidLeftover > 0 && vaultsPending.length > 0)
-      ? `<div class="add-dashed-btn" style="border-style:solid; background:rgba(184,134,43,0.08); border-color:rgba(184,134,43,0.35); color:var(--brass); margin-bottom:14px;" onclick="autoDistributeLeftover()">✨ Distribuir ${fmt(liquidLeftover)} de sobra pelas metas</div>`
-      : '';
-  }
 
   if(scopedVaults.length === 0){
     list.innerHTML = `<div class="empty-note">Nenhum cofre ${currentScope()==='casa' ? 'da casa' : 'pessoal'} ainda. Crie o primeiro.</div>`;
@@ -4727,7 +4673,7 @@ function renderBills(entry){
     }
     return `
       <div class="bill-row">
-        <div class="bill-check ${paid?'checked':''}" onclick="${paid ? `unpayBill('${b.id}')` : (b.payFromVaultId ? `confirmPayVaultBill('${b.id}')` : `openPayBillSheet('${b.id}')`)}">${paid?'✓':''}</div>
+        <div class="bill-check ${paid?'checked':''}" onclick="${paid ? `unpayBill('${b.id}')` : (b.payFromVaultId ? `openPayVaultBillSheet('${b.id}')` : `openPayBillSheet('${b.id}')`)}">${paid?'✓':''}</div>
         <div class="bill-info">
           <div class="bill-name ${paid?'paid':''}">${escapeHtml(b.name)} ${vaultBadge}${loanBadge}${durationBadge}</div>
           <div class="bill-sub">${sourceSummary}</div>
@@ -5237,6 +5183,23 @@ async function confirmPayPersonalBill(billId){
   entry.billsPaid[billId] = { personalVaultId: v.id };
   await persistMonthData(); closeSheet(); showToast('Conta paga'); renderMonth(); renderAll();
 }
+function openPayVaultBillSheet(billId){
+  const entry = ensureMonthEntry(currentMonthKey);
+  const b     = bills.find(x=>x.id===billId); if(!b) return;
+  const amount    = billAmount(entry, b);
+  const fromVault = vaults.find(x=>x.id===b.payFromVaultId);
+  const toVault   = vaults.find(x=>x.id===b.payToVaultId);
+  if(!fromVault || !toVault) return;
+  const warning = amount > fromVault.balance
+    ? `<div class="section-sub" style="color:var(--terracotta); margin:-4px 2px 14px;">⚠️ "${escapeHtml(fromVault.name)}" vai ficar negativo devolvendo esse valor.</div>` : '';
+  openSheet(`
+    ${sheetHeader('Devolver empréstimo')}
+    <div class="sheet-sub">Devolver ${fmt(amount)} de "${escapeHtml(fromVault.name)}" para "${escapeHtml(toVault.name)}"?</div>
+    ${warning}
+    <button class="btn btn-primary" onclick="confirmPayVaultBill('${billId}')">Confirmar devolução</button>
+    <button class="btn btn-ghost" onclick="closeSheet()">Cancelar</button>
+  `);
+}
 async function confirmPayVaultBill(billId){
   const entry = ensureMonthEntry(currentMonthKey);
   const b     = bills.find(x=>x.id===billId); if(!b) return;
@@ -5244,8 +5207,6 @@ async function confirmPayVaultBill(billId){
   const fromVault = vaults.find(x=>x.id===b.payFromVaultId);
   const toVault   = vaults.find(x=>x.id===b.payToVaultId);
   if(!fromVault || !toVault) return;
-  if(amount > fromVault.balance){ if(!confirm(`"${fromVault.name}" vai ficar negativo devolvendo esse valor. Continuar?`)) return; }
-  if(!confirm(`Devolver ${fmt(amount)} de "${fromVault.name}" para "${toVault.name}"?`)) return;
 
   fromVault.balance = round2(fromVault.balance - amount);
   toVault.balance   = round2(toVault.balance + amount);
@@ -5259,6 +5220,7 @@ async function confirmPayVaultBill(billId){
 
   entry.billsPaid[billId] = { vaultLoan: true };
   await persistMonthData();
+  closeSheet();
   showToast('Empréstimo devolvido! 🎉'); renderMonth(); renderAll();
 }
 
@@ -5285,13 +5247,11 @@ function renderPersonalMonthSummary(entry){
       <div class="ms-label ms-final-label">👛 Guardado nos seus cofres</div>
       <div class="ms-value">${fmt(myVaultsTotal)}</div>
     </div>`;
-  document.getElementById('leftoverBanner').style.display = 'none';
 }
 function renderMonthSummary(entry, totalIncome){
   const visibleBills = bills.filter(b => !entry.hiddenBills[b.id] && isBillDueThisMonth(b));
   const totalBills   = visibleBills.reduce((s,b)=> s + billAmount(entry, b), 0);
   const freeLeftover = totalIncome - totalBills;
-  const liquidLeftover = remainingBySource(entry, 'fisico') + remainingBySource(entry, 'conta');
 
   document.getElementById('monthSummary').innerHTML = `
     <div class="ms-row" style="opacity:0.85;"><div class="ms-label">Renda total cadastrada</div><div class="ms-value">${fmt(totalIncome)}</div></div>
@@ -5300,65 +5260,6 @@ function renderMonthSummary(entry, totalIncome){
       <div class="ms-label ms-final-label">💵🏛️ ${freeLeftover>=0?'Sobra livre':'Falta'}</div>
       <div class="ms-value">${fmt(Math.abs(freeLeftover))}</div>
     </div>`;
-
-  const banner          = document.getElementById('leftoverBanner');
-  const vaultsWithGoals = visibleVaults().filter(v => v.goal && v.balance < v.goal);
-
-  if(liquidLeftover > 0 && totalIncome > 0){
-    banner.style.display = 'block';
-    document.getElementById('leftoverValue').textContent = fmt(liquidLeftover);
-    document.getElementById('leftoverAction').innerHTML = vaultsWithGoals.length > 0
-      ? `<button class="btn btn-primary" style="margin-top:0;" onclick="autoDistributeLeftover()">✨ Distribuir pelas metas</button>
-         <button class="btn btn-ghost" style="margin-top:0;" onclick="goHome()">Guardar manualmente</button>`
-      : `<button class="btn btn-primary" onclick="goHome()">Ir guardar num cofre</button>`;
-  } else { banner.style.display = 'none'; }
-}
-
-async function autoDistributeLeftover(){
-  if(currentScope() !== 'casa'){ showToast('Distribuir sobra é só no espaço Casa — não há renda registrada em perfis pessoais.'); return; }
-  const entry        = ensureMonthEntry(currentMonthKey);
-  let fisRemaining    = remainingBySource(entry, 'fisico');
-  let cntRemaining    = remainingBySource(entry, 'conta');
-  let leftover        = fisRemaining + cntRemaining;
-  const vaultsToFund  = visibleVaults().filter(v => v.goal && v.balance < v.goal);
-  if(vaultsToFund.length === 0){ showToast("Nenhum cofre com meta pendente!"); return; }
-  if(leftover <= 0){ showToast("Não há saldo livre disponível."); return; }
-
-  let distributedTotal = 0, distributedCount = 0;
-  const now = Date.now();
-
-  for(const v of vaultsToFund){
-    if(leftover <= 0) break;
-    const needed = round2(v.goal - v.balance); if(needed <= 0) continue;
-    const take = Math.min(leftover, needed);
-    if(take <= 0) continue;
-
-    const bill = {
-      id: uid(), name: `Guardar para meta — ${escapeHtml(v.name)}`,
-      defaultAmount: take, kind: 'variavel', targetVaultId: v.id,
-      createdMonthKey: currentMonthKey, endMonthKey: currentMonthKey, ownerId: null
-    };
-    bills.push(bill);
-
-    const takeCnt = Math.min(cntRemaining, take); cntRemaining = round2(cntRemaining - takeCnt);
-    const takeFis = round2(take - takeCnt);        fisRemaining = round2(fisRemaining - takeFis);
-    entry.billsPaid[bill.id] = { fisico: takeFis, vale: 0, conta: takeCnt };
-
-    v.balance = round2(v.balance + take);
-    addVaultSourceSplit(v, { fisico: takeFis, vale: 0, conta: takeCnt });
-    txns.push({ id: uid(), vaultId: v.id, type:'deposito', amount: take, note:`Transf. Agendada: ${bill.name}`, who: null, billId: bill.id, ts: now });
-
-    leftover = round2(leftover - take);
-    distributedTotal += take; distributedCount++;
-  }
-
-  if(distributedCount > 0){
-    await persistBills(); await persistVaults(); await persistTxns(); await persistMonthData();
-    showToast(`✨ ${fmt(distributedTotal)} guardados em ${distributedCount} cofre(s)!`);
-    renderMonth(); renderAll();
-  } else {
-    showToast("Não há saldo livre suficiente.");
-  }
 }
 
 let toastTimer = null;
