@@ -1876,6 +1876,7 @@ body.dark .loan-progress-bg { background: rgba(255,255,255,0.14); }
     </svg>
   </div>
   <div class="splash-title" style="font-family:'Fraunces',serif;font-weight:600;font-size:26px;color:var(--vault);letter-spacing:-0.01em;">Dueto</div>
+  <div id="splashVersion" style="font-size:11px;color:var(--text-faint);margin-top:-10px;"></div>
   <div style="display:flex;gap:7px;align-items:center;">
     <div style="width:7px;height:7px;border-radius:50%;background:var(--vault-light);animation:splashDot 1.2s ease-in-out infinite;"></div>
     <div style="width:7px;height:7px;border-radius:50%;background:var(--vault-light);animation:splashDot 1.2s ease-in-out 0.2s infinite;"></div>
@@ -1961,7 +1962,7 @@ if (!window.storage) {
   };
 }
 
-const APP_VERSION = '4.0.0';  // last updated: 2026-07-14 — removed: "Distribuir pelas metas" (banner e botão) tirado por completo. fix: pagar a devolução de empréstimo entre cofres usava dois confirm() nativos seguidos, que podiam ser bloqueados silenciosamente e travar o pagamento sem avisar — trocado por sheet de confirmação própria do app
+const APP_VERSION = '4.0.1';  // last updated: 2026-07-14 — added: número da versão sempre visível na tela de carregamento
 
 async function checkForUpdateOnBoot(){
   try{
@@ -5736,6 +5737,9 @@ if(window.matchMedia){
     if((localSettings.darkMode || 'system') === 'system') applyDarkModeClass();
   });
 }
+
+const svEl = document.getElementById('splashVersion');
+if(svEl) svEl.textContent = 'v' + APP_VERSION;
 
 loadAll();
 </script>
